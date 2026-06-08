@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from models import ClaimLine
-from services.ai_service import extract_receipt, suggest_categories
+from services.ai_service import extract_receipt, suggest_categories, summarise_narrative
 from services.audit_service import log as audit_log
 from services.embedding_service import (
     embed,
@@ -320,3 +320,56 @@ async def suggest_category_endpoint(req: SuggestRequest) -> SuggestResponse:
         explanation=result["explanation"],
         neighbour_count=len(neighbours),
     )
+
+
+
+class SummariseRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    line_id: Optional[str] = None
+
+
+class SummariseResponse(BaseModel):
+    transcript: str
+    summary: str
+
+
+@router.post("/summarise-narrative", response_model=SummariseResponse)
+async def summarise_narrative_endpoint(req: SummariseRequest) -> SummariseResponse:
+    cleaned = req.text.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="text is required")
+    try:
+        summary = await summarise_narrative(cleaned)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Narrative summarise failed")
+        raise HTTPException(status_code=502, detail=f"Summariser failed: {exc}") from exc
+
+    # If a line_id was provided, persist both raw + summary for that draft line.
+    if req.line_id:
+        sb = get_supabase()
+        line_rows = (
+            sb.table("claim_lines")
+            .select("*")
+            .eq("claim_line_id", req.line_id)
+            .execute()
+            .data
+            or []
+        )
+        if line_rows:
+            line = line_rows[0]
+            claim_rows = (
+                sb.table("claims").select("status").eq("claim_id", line["claim_id"]).execute().data or []
+            )
+            if (claim_rows[0] if claim_rows else {}).get("status") == "draft":
+                sb.table("claim_lines").update(
+                    {"voice_transcript_raw": cleaned, "narrative_final": summary[:50]}
+                ).eq("claim_line_id", req.line_id).execute()
+                audit_log(
+                    event_type="narrative_summarised",
+                    claim_id=line["claim_id"],
+                    claim_line_id=req.line_id,
+                    employee_id=DEMO_EMPLOYEE_ID,
+                    payload={"raw_len": len(cleaned), "summary_len": len(summary)},
+                )
+
+    return SummariseResponse(transcript=cleaned, summary=summary[:50])

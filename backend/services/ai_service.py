@@ -279,5 +279,46 @@ async def suggest_categories(
     }
 
 
+SUMMARISE_SYSTEM_PROMPT = """You convert spoken expense narratives into a
+50-character business expense memo.
+
+Rules:
+- Output ONE line, MAX 50 characters (count carefully).
+- Sentence-case, no trailing period.
+- Keep the business purpose, drop filler words ("erm", "uh", "this was").
+- Prefer concrete entities: meal type, attendees role, journey purpose.
+- If the input is already short and clean, return it as-is (truncated if >50).
+- Output ONLY the summary text, no quotes, no JSON, no prose.
+"""
+
+
 async def summarise_narrative(text: str) -> str:
-    raise NotImplementedError("Phase 6")
+    """Use Claude to compress a voice transcript into a <=50 char memo."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    # Fast path — already short enough.
+    if len(cleaned) <= 50 and "\n" not in cleaned:
+        return cleaned
+
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        # Fallback: naive truncate.
+        return cleaned[:50].rstrip()
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"narrative-sum-{uuid.uuid4()}",
+        system_message=SUMMARISE_SYSTEM_PROMPT,
+    ).with_model(MODEL_PROVIDER, MODEL_NAME)
+
+    try:
+        raw = await chat.send_message(UserMessage(text=cleaned))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("summarise_narrative failed, falling back: %s", exc)
+        return cleaned[:50].rstrip()
+
+    out = (raw if isinstance(raw, str) else str(raw)).strip().splitlines()[0]
+    # Strip surrounding quotes if any
+    out = out.strip('"\u2018\u2019\u201c\u201d ')
+    return out[:50].rstrip()

@@ -13,8 +13,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAddLine, useCategories } from "@/src/api/client";
+import { useAddLine, useCategories, useSummariseNarrative } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
+import { NarrativeRecorder } from "@/src/components/NarrativeRecorder";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 import { todayUK, ukToISO } from "@/src/utils/format";
 
@@ -24,6 +25,7 @@ export default function NoReceiptLineScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const categories = useCategories();
   const add = useAddLine(id);
+  const summarise = useSummariseNarrative();
 
   const [category, setCategory] = useState<string | null>(null);
   const [gross, setGross] = useState("");
@@ -121,17 +123,22 @@ export default function NoReceiptLineScreen() {
         </Field>
 
         <Field label="Narrative (max 50 chars)">
-          <TextInput
+          <NarrativeRecorder
             testID="no-receipt-narrative"
             value={narrative}
             onChangeText={(t) => setNarrative(t.slice(0, 50))}
+            busy={summarise.isPending}
             placeholder="What was this for?"
-            placeholderTextColor={colors.textMuted}
-            style={[styles.input, { height: 80, textAlignVertical: "top" }]}
-            multiline
             maxLength={50}
+            onTranscript={async (raw) => {
+              try {
+                const res = await summarise.mutateAsync({ text: raw });
+                setNarrative(res.summary.slice(0, 50));
+              } catch {
+                // already shown raw
+              }
+            }}
           />
-          <Text style={styles.counter}>{narrative.length}/50</Text>
         </Field>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

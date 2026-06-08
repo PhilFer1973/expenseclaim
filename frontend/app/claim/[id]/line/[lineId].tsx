@@ -20,11 +20,13 @@ import {
   useCategories,
   useClaim,
   useSuggestCategory,
+  useSummariseNarrative,
   useUpdateLine,
   type CategorySuggestion,
   type ClaimLine,
 } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
+import { NarrativeRecorder } from "@/src/components/NarrativeRecorder";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 import { isoToUK, ukToISO } from "@/src/utils/format";
@@ -39,6 +41,7 @@ export default function EditLineScreen() {
   const categories = useCategories();
   const update = useUpdateLine(id);
   const suggest = useSuggestCategory();
+  const summarise = useSummariseNarrative();
 
   const line: ClaimLine | undefined = claim.data?.lines.find(
     (l) => l.claim_line_id === lineId
@@ -275,22 +278,24 @@ export default function EditLineScreen() {
         </Field>
 
         <Field label="Narrative (max 50 chars)">
-          <TextInput
+          <NarrativeRecorder
             testID="edit-line-narrative"
             value={narrative}
             onChangeText={(t) => setNarrative(t.slice(0, 50))}
-            editable={!readOnly}
+            disabled={readOnly}
+            busy={summarise.isPending}
             placeholder="What was this for?"
-            placeholderTextColor={colors.textMuted}
-            style={[
-              styles.input,
-              { height: 80, textAlignVertical: "top" },
-              readOnly && styles.inputReadOnly,
-            ]}
-            multiline
             maxLength={50}
+            onTranscript={async (raw) => {
+              if (!lineId) return;
+              try {
+                const res = await summarise.mutateAsync({ text: raw, lineId });
+                setNarrative(res.summary.slice(0, 50));
+              } catch {
+                // Already shown as narrative raw; user can edit manually.
+              }
+            }}
           />
-          <Text style={styles.counter}>{narrative.length}/50</Text>
         </Field>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -268,6 +268,21 @@ export function useSuggestCategory() {
   });
 }
 
+export type SummariseResponse = {
+  transcript: string;
+  summary: string;
+};
+
+export function useSummariseNarrative() {
+  return useMutation({
+    mutationFn: ({ text, lineId }: { text: string; lineId?: string }) =>
+      request<SummariseResponse>(`/ai/summarise-narrative`, {
+        method: "POST",
+        body: JSON.stringify({ text, line_id: lineId }),
+      }),
+  });
+}
+
 export function useExtractReceipt(claimId: string) {
   const qc = useQueryClient();
   return useMutation({
