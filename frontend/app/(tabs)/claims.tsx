@@ -2,7 +2,6 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -17,6 +16,7 @@ import { ClaimCard } from "@/src/components/ClaimCard";
 import { EmptyState } from "@/src/components/EmptyState";
 import { Fab } from "@/src/components/Fab";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
+import { confirm } from "@/src/utils/confirm";
 
 type Filter = "all" | ClaimStatus;
 const FILTERS: { key: Filter; label: string }[] = [
@@ -25,6 +25,12 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "submitted", label: "Submitted" },
 ];
 
+const HINT_BY_FILTER: Record<Filter, string> = {
+  all: "Select a pane to edit / view",
+  draft: "Select a pane to edit",
+  submitted: "Select a pane to view",
+};
+
 export default function ClaimsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -32,19 +38,14 @@ export default function ClaimsScreen() {
   const claims = useClaims(filter === "all" ? undefined : filter);
   const remove = useDeleteClaim();
 
-  const promptDelete = (claimId: string, title: string) => {
-    Alert.alert(
-      "Delete draft?",
-      `"${title}" and all its lines will be removed.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => remove.mutate(claimId),
-        },
-      ]
-    );
+  const promptDelete = async (claimId: string, title: string) => {
+    const ok = await confirm({
+      title: "Delete draft?",
+      message: `"${title}" and all its lines will be removed.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) remove.mutate(claimId);
   };
 
   return (
@@ -91,7 +92,7 @@ export default function ClaimsScreen() {
           />
         ) : (
           <View style={{ gap: spacing.md }}>
-            <Text style={styles.hint}>Select a pane to edit</Text>
+            <Text style={styles.hint}>{HINT_BY_FILTER[filter]}</Text>
             {(claims.data ?? []).map((c) => (
               <ClaimCard
                 key={c.claim_id}

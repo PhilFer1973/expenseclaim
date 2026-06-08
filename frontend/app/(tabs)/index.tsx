@@ -1,8 +1,7 @@
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -15,8 +14,15 @@ import { useClaims, useDeleteClaim, useMe } from "@/src/api/client";
 import { ClaimCard } from "@/src/components/ClaimCard";
 import { EmptyState } from "@/src/components/EmptyState";
 import { Fab } from "@/src/components/Fab";
-import { HeroCard } from "@/src/components/HeroCard";
+import { HeroCard, type Period } from "@/src/components/HeroCard";
 import { colors, spacing, typography } from "@/src/theme/tokens";
+import { confirm } from "@/src/utils/confirm";
+
+const PERIOD_DAYS: Record<Period, number> = {
+  "7d": 7,
+  "30d": 30,
+  "12m": 365,
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -24,28 +30,37 @@ export default function HomeScreen() {
   const me = useMe();
   const claims = useClaims();
   const remove = useDeleteClaim();
+  const [period, setPeriod] = useState<Period>("30d");
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  const promptDelete = (claimId: string, title: string) => {
-    Alert.alert("Delete draft?", `"${title}" and all its lines will be removed.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => remove.mutate(claimId),
-      },
-    ]);
+  const promptDelete = async (claimId: string, title: string) => {
+    const ok = await confirm({
+      title: "Delete draft?",
+      message: `"${title}" and all its lines will be removed.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) remove.mutate(claimId);
   };
 
   const totals = useMemo(() => {
     const list = claims.data ?? [];
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - PERIOD_DAYS[period]);
+    const inWindow = (iso: string | null | undefined) =>
+      !!iso && new Date(iso) >= cutoff;
+    const submittedInWindow = list.filter(
+      (c) => c.status === "submitted" && inWindow(c.submitted_at)
+    );
     return {
-      submittedTotal: list
-        .filter((c) => c.status === "submitted")
-        .reduce((sum, c) => sum + Number(c.running_gross_total ?? 0), 0),
-      submittedCount: list.filter((c) => c.status === "submitted").length,
+      submittedTotal: submittedInWindow.reduce(
+        (sum, c) => sum + Number(c.running_gross_total ?? 0),
+        0
+      ),
+      submittedCount: submittedInWindow.length,
       draftCount: list.filter((c) => c.status === "draft").length,
     };
-  }, [claims.data]);
+  }, [claims.data, period]);
 
   const drafts = (claims.data ?? []).filter((c) => c.status === "draft");
   const recent = (claims.data ?? []).filter((c) => c.status === "submitted").slice(0, 6);
@@ -74,6 +89,13 @@ export default function HomeScreen() {
               total={totals.submittedTotal}
               submittedCount={totals.submittedCount}
               draftCount={totals.draftCount}
+              period={period}
+              onPeriodChange={(p) => {
+                setPeriod(p);
+                setPickerOpen(false);
+              }}
+              pickerOpen={pickerOpen}
+              onTogglePicker={() => setPickerOpen((v) => !v)}
             />
 
             {drafts.length > 0 ? (

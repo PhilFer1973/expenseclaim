@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,7 @@ import { EmptyState } from "@/src/components/EmptyState";
 import { LineCard } from "@/src/components/LineCard";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, shadow, spacing, typography } from "@/src/theme/tokens";
+import { confirm } from "@/src/utils/confirm";
 import { formatGBP } from "@/src/utils/format";
 
 export default function ClaimBuilderScreen() {
@@ -138,16 +138,15 @@ export default function ClaimBuilderScreen() {
                 key={line.claim_line_id}
                 line={line}
                 onPress={() => router.push(`/claim/${id}/line/${line.claim_line_id}`)}
-                onDelete={() =>
-                  Alert.alert("Delete line?", "This line will be removed from the claim.", [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: () => removeLine.mutate(line.claim_line_id),
-                    },
-                  ])
-                }
+                onDelete={async () => {
+                  const ok = await confirm({
+                    title: "Delete line?",
+                    message: "This line will be removed from the claim.",
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  });
+                  if (ok) removeLine.mutate(line.claim_line_id);
+                }}
               />
             ))}
           </View>
