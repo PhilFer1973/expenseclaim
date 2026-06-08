@@ -43,6 +43,7 @@ export default function EditLineScreen() {
   const readOnly = claim.data?.status === "submitted";
 
   const [category, setCategory] = useState<string | null>(null);
+  const [supplier, setSupplier] = useState("");
   const [gross, setGross] = useState("");
   const [narrative, setNarrative] = useState("");
   const [date, setDate] = useState("");
@@ -51,6 +52,7 @@ export default function EditLineScreen() {
   useEffect(() => {
     if (line) {
       setCategory(line.category);
+      setSupplier(line.supplier_name ?? "");
       setGross(line.gross_amount?.toString() ?? "");
       setNarrative(line.narrative_final ?? "");
       setDate(isoToUK(line.receipt_date));
@@ -74,6 +76,7 @@ export default function EditLineScreen() {
         lineId,
         body: {
           category,
+          supplier_name: supplier.trim() || null,
           gross_amount: isNaN(grossNum) ? null : grossNum,
           narrative_final: narrative.trim().slice(0, 50),
           receipt_date: ukToISO(date),
@@ -120,6 +123,28 @@ export default function EditLineScreen() {
             />
           </View>
         ) : null}
+
+        {line.image_quality_status === "blurry" && !readOnly ? (
+          <View style={styles.warnBanner}>
+            <Ionicons name="warning-outline" size={18} color={colors.warning} />
+            <Text style={styles.warnText}>
+              The receipt photo looks blurry. Please double-check the fields below, or
+              retake the photo for a cleaner scan.
+            </Text>
+          </View>
+        ) : null}
+
+        <Field label="Supplier">
+          <TextInput
+            testID="edit-line-supplier"
+            value={supplier}
+            onChangeText={setSupplier}
+            editable={!readOnly}
+            placeholder="e.g. Pret A Manger"
+            placeholderTextColor={colors.textMuted}
+            style={[styles.input, readOnly && styles.inputReadOnly]}
+          />
+        </Field>
 
         <Field label="Date">
           <TextInput
@@ -234,6 +259,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   image: { width: "100%", height: "100%" },
+  warnBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: colors.warningSoft,
+    padding: spacing.md,
+    borderRadius: radii.field,
+  },
+  warnText: { flex: 1, fontSize: typography.bodySm, color: colors.textPrimary },
   label: { fontSize: typography.bodySm, color: colors.textSecondary, fontWeight: typography.medium },
   input: {
     backgroundColor: colors.surface,

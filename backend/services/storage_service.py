@@ -55,3 +55,10 @@ def delete_receipt(path: str) -> None:
         get_supabase().storage.from_(BUCKET).remove([path])
     except Exception as exc:  # noqa: BLE001
         logger.warning("delete_receipt failed for %s: %s", path, exc)
+
+
+def download_receipt(path: str) -> bytes:
+    """Download raw image bytes from the receipts bucket."""
+    if not path:
+        raise ValueError("path is required")
+    return get_supabase().storage.from_(BUCKET).download(path)

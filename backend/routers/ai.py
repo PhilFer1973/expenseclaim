@@ -1,0 +1,209 @@
+"""AI router — Claude Vision extraction & friends.
+
+Routes:
+  POST /api/ai/extract-receipt    Vision extraction for a draft line that
+                                  already has an uploaded receipt image.
+                                  Updates the line with extracted fields and
+                                  returns the refreshed line + extraction meta.
+"""
+from __future__ import annotations
+
+import base64
+import logging
+from typing import Any, Optional
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from models import ClaimLine
+from services.ai_service import extract_receipt
+from services.audit_service import log as audit_log
+from services.flags_service import is_old_receipt, normalise_supplier
+from services.storage_service import download_receipt
+from services.supabase_client import get_supabase
+from services.vat_service import compute_vat_code
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/ai", tags=["ai"])
+
+DEMO_EMPLOYEE_ID = "00000000-0000-0000-0000-000000000001"
+
+
+class ExtractRequest(BaseModel):
+    line_id: str = Field(min_length=1)
+    # Optional override: if the client wants to extract from a freshly-captured
+    # image without uploading first (rare). Normally we use the stored receipt.
+    image_base64: Optional[str] = None
+
+
+class ExtractResponse(BaseModel):
+    line: ClaimLine
+    extracted: dict[str, Any]
+
+
+def _to_dec(v: Any):
+    from decimal import Decimal
+
+    if v is None:
+        return None
+    return Decimal(str(v))
+
+
+@router.post("/extract-receipt", response_model=ExtractResponse)
+async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
+    sb = get_supabase()
+    line_res = (
+        sb.table("claim_lines")
+        .select("*")
+        .eq("claim_line_id", req.line_id)
+        .execute()
+    )
+    if not line_res.data:
+        raise HTTPException(status_code=404, detail="Line not found")
+    line = line_res.data[0]
+
+    claim_rows = (
+        sb.table("claims").select("status").eq("claim_id", line["claim_id"]).execute().data or []
+    )
+    claim_status = (claim_rows[0] if claim_rows else {}).get("status")
+    if claim_status != "draft":
+        raise HTTPException(status_code=409, detail="Submitted claims are read-only")
+
+    # Resolve image bytes
+    if req.image_base64:
+        image_b64 = req.image_base64
+    else:
+        img_row = (
+            sb.table("receipt_images")
+            .select("storage_path")
+            .eq("claim_line_id", req.line_id)
+            .eq("is_current", True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if not img_row:
+            raise HTTPException(status_code=400, detail="No receipt image to extract")
+        try:
+            raw_bytes = download_receipt(img_row[0]["storage_path"])
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Image fetch failed: {exc}") from exc
+        image_b64 = base64.b64encode(raw_bytes).decode("ascii")
+
+    try:
+        extracted = await extract_receipt(image_b64)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Vision extraction failed")
+        raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
+
+    quality = extracted.get("image_quality") or "ok"
+    image_quality_status = {
+        "ok": "ok",
+        "blurry": "blurry",
+        "unreadable": "blurry",
+    }.get(quality, "ok")
+
+    # Build update payload — keep existing values when the model returned null.
+    gross = extracted.get("gross_amount") or line.get("gross_amount")
+    vat = extracted.get("vat_amount")
+    if vat is None:
+        vat = line.get("vat_amount") or 0
+    net = extracted.get("net_amount")
+    if net is None and gross is not None:
+        net = round(float(gross) - float(vat or 0), 2)
+
+    payload: dict = {
+        "supplier_name": extracted.get("supplier_name") or line.get("supplier_name"),
+        "supplier_vat_number": extracted.get("supplier_vat_number") or line.get("supplier_vat_number"),
+        "receipt_date": extracted.get("receipt_date") or line.get("receipt_date"),
+        "gross_amount": float(gross) if gross is not None else None,
+        "vat_amount": float(vat) if vat is not None else 0.0,
+        "net_amount": float(net) if net is not None else None,
+        "image_quality_status": image_quality_status,
+    }
+    if extracted.get("category_hint") and not line.get("category"):
+        # Hint only — final selection happens in Phase 5 reranker.
+        pass
+
+    # Recompute VAT code from merged state
+    merged = {**line, **payload}
+    decision = compute_vat_code(
+        receipt_status=merged.get("receipt_status"),
+        category=merged.get("category"),
+        vat_amount=_to_dec(merged.get("vat_amount")),
+        supplier_vat_number=merged.get("supplier_vat_number"),
+    )
+    payload["vat_code"] = decision.vat_code
+    payload["vat_amount"] = float(decision.vat_amount)
+
+    # Old-receipt flag
+    rd = merged.get("receipt_date")
+    if rd:
+        from datetime import date as date_t
+
+        try:
+            rd_obj = date_t.fromisoformat(rd) if isinstance(rd, str) else rd
+            payload["old_receipt_flag"] = is_old_receipt(rd_obj)
+        except ValueError:
+            payload["old_receipt_flag"] = False
+
+    # Persist
+    sb.table("claim_lines").update(payload).eq("claim_line_id", req.line_id).execute()
+
+    confidence = float(extracted.get("confidence") or 0.0)
+    audit_log(
+        event_type="receipt_extracted",
+        claim_id=line["claim_id"],
+        claim_line_id=req.line_id,
+        employee_id=DEMO_EMPLOYEE_ID,
+        payload={
+            "confidence": confidence,
+            "image_quality": image_quality_status,
+            "supplier": payload.get("supplier_name"),
+            "gross": payload.get("gross_amount"),
+            "category_hint": extracted.get("category_hint"),
+        },
+    )
+
+    # Return refreshed line + structured extraction details
+    refreshed = (
+        sb.table("claim_lines")
+        .select("*")
+        .eq("claim_line_id", req.line_id)
+        .single()
+        .execute()
+        .data
+    )
+    line_model = ClaimLine(**refreshed)
+    # Attach signed URL for convenience
+    img = (
+        sb.table("receipt_images")
+        .select("storage_path")
+        .eq("claim_line_id", req.line_id)
+        .eq("is_current", True)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if img:
+        from services.storage_service import signed_url
+
+        line_model.receipt_url = signed_url(img[0]["storage_path"])
+
+    return ExtractResponse(
+        line=line_model,
+        extracted={
+            "supplier_name": extracted.get("supplier_name"),
+            "receipt_date": extracted.get("receipt_date"),
+            "gross_amount": extracted.get("gross_amount"),
+            "vat_amount": extracted.get("vat_amount"),
+            "net_amount": extracted.get("net_amount"),
+            "category_hint": extracted.get("category_hint"),
+            "image_quality": image_quality_status,
+            "confidence": confidence,
+            "notes": extracted.get("notes"),
+        },
+    )

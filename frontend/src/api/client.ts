@@ -233,3 +233,33 @@ export function useUploadReceipt(claimId: string) {
     },
   });
 }
+
+export type ExtractedReceipt = {
+  supplier_name: string | null;
+  receipt_date: string | null;
+  gross_amount: number | null;
+  vat_amount: number | null;
+  net_amount: number | null;
+  category_hint: string | null;
+  image_quality: "ok" | "blurry" | "unreadable";
+  confidence: number;
+  notes: string | null;
+};
+
+export function useExtractReceipt(claimId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ lineId }: { lineId: string }) =>
+      request<{ line: ClaimLine; extracted: ExtractedReceipt }>(
+        `/ai/extract-receipt`,
+        {
+          method: "POST",
+          body: JSON.stringify({ line_id: lineId }),
+        }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.claim(claimId) });
+      qc.invalidateQueries({ queryKey: ["claims"] });
+    },
+  });
+}

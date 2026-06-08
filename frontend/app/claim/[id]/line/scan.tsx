@@ -17,8 +17,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useAddLine, useUploadReceipt } from "@/src/api/client";
+import { useAddLine, useExtractReceipt, useUploadReceipt } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
+import { ScanningOverlay } from "@/src/components/ScanningOverlay";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 
 type Captured = { uri: string; base64: string; width: number; height: number };
@@ -35,6 +36,8 @@ export default function ScanReceiptScreen() {
 
   const addLine = useAddLine(id);
   const uploadReceipt = useUploadReceipt(id);
+  const extract = useExtractReceipt(id);
+  const [scanning, setScanning] = useState(false);
 
   const onCapture = async () => {
     try {
@@ -73,7 +76,7 @@ export default function ScanReceiptScreen() {
     setError(null);
     setWorking(true);
     try {
-      // 1. Create the line (receipt path; fields will be filled on review screen).
+      // 1. Create the line (receipt path; fields will be filled by Claude Vision).
       const line = await addLine.mutateAsync({ receipt_status: "receipt" });
       // 2. Upload the image to that line.
       await uploadReceipt.mutateAsync({
@@ -82,10 +85,22 @@ export default function ScanReceiptScreen() {
         width: captured.width,
         height: captured.height,
       });
-      // 3. Go to review screen to fill in supplier / amounts / category / narrative.
+      // 3. Run Claude Vision extraction. Show the scanning overlay while it works.
+      setScanning(true);
+      try {
+        await extract.mutateAsync({ lineId: line.claim_line_id });
+      } catch (extractError) {
+        // Non-fatal — the user can still fill the line manually.
+        // eslint-disable-next-line no-console
+        console.warn("Vision extract failed", extractError);
+      } finally {
+        setScanning(false);
+      }
+      // 4. Go to review screen so the user can confirm extracted fields.
       router.replace(`/claim/${id}/line/${line.claim_line_id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
+      setScanning(false);
       setWorking(false);
     }
   };
@@ -153,6 +168,7 @@ export default function ScanReceiptScreen() {
             loading={working}
           />
         </View>
+        <ScanningOverlay visible={scanning} />
       </View>
     );
   }
