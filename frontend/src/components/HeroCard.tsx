@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { GlassPane } from "@/src/components/GlassPane";
 import { colors, radii, shadow, spacing, typography } from "@/src/theme/tokens";
 import { formatGBP } from "@/src/utils/format";
 
@@ -36,7 +37,7 @@ export function HeroCard({
 }) {
   const currentLabel = PERIODS.find((p) => p.key === period)?.label ?? "Last 30 days";
   return (
-    <View style={styles.card} testID="home-hero-card">
+    <GlassPane style={styles.card} radius={radii.cardLarge} testID="home-hero-card">
       <View style={styles.headerRow}>
         <Text style={styles.label}>Submitted</Text>
         <Pressable
@@ -91,16 +92,13 @@ export function HeroCard({
           <Text style={styles.metaLabel}>Draft</Text>
         </View>
       </View>
-    </View>
+    </GlassPane>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.cardLarge,
     padding: spacing.xl,
-    ...shadow.card,
   },
   headerRow: {
     flexDirection: "row",

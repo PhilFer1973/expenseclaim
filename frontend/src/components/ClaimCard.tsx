@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { GlassPane } from "@/src/components/GlassPane";
 import { StatusPill } from "@/src/components/StatusPill";
-import { colors, radii, shadow, spacing, typography } from "@/src/theme/tokens";
+import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 import type { ClaimSummary } from "@/src/api/client";
 import { formatGBP, formatUKDate } from "@/src/utils/format";
 
@@ -21,9 +22,10 @@ export function ClaimCard({
     <Pressable
       testID={`claim-card-${claim.claim_id}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+      style={({ pressed }) => [pressed && styles.pressed]}
     >
-      <View style={styles.top}>
+      <GlassPane style={styles.card}>
+        <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title} numberOfLines={1}>
             {claim.claim_title}
@@ -56,16 +58,14 @@ export function ClaimCard({
           </Pressable>
         ) : null}
       </View>
+      </GlassPane>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.card,
     padding: spacing.lg,
-    ...shadow.card,
   },
   pressed: { opacity: 0.85 },
   top: {

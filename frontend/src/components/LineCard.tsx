@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { GlassPane } from "@/src/components/GlassPane";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 import type { ClaimLine, VatCode } from "@/src/api/client";
@@ -36,13 +37,12 @@ export function LineCard({
     <Pressable
       testID={`line-card-${line.claim_line_id}`}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.card,
-        incomplete && !readOnly ? styles.cardIncomplete : null,
-        pressed && !readOnly && styles.pressed,
-      ]}
+      style={({ pressed }) => [pressed && !readOnly && styles.pressed]}
     >
-      <View style={styles.top}>
+      <GlassPane
+        style={[styles.card, incomplete && !readOnly ? styles.cardIncomplete : null]}
+      >
+        <View style={styles.top}>
         <View style={{ flex: 1 }}>
           <Text style={styles.title} numberOfLines={1}>
             {title}
@@ -94,17 +94,14 @@ export function LineCard({
           {line.narrative_final}
         </Text>
       ) : null}
+      </GlassPane>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.card,
     padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.hairline,
   },
   pressed: { opacity: 0.85 },
   top: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
