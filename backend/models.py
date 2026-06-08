@@ -43,6 +43,7 @@ class ClaimLine(BaseModel):
     ai_category_explanation: Optional[str] = None
     duplicate_flag: bool = False
     old_receipt_flag: bool = False
+    receipt_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

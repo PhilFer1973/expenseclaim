@@ -101,6 +101,25 @@ def get_claim(claim_id: str) -> ClaimDetail:
         .execute()
     )
     lines = [ClaimLine(**row) for row in (lines_res.data or [])]
+    # Attach signed URLs for any current receipt images
+    line_ids = [ln.claim_line_id for ln in lines]
+    if line_ids:
+        imgs = (
+            sb.table("receipt_images")
+            .select("claim_line_id, storage_path")
+            .in_("claim_line_id", line_ids)
+            .eq("is_current", True)
+            .execute()
+            .data
+            or []
+        )
+        from services.storage_service import signed_url
+
+        path_by_line = {i["claim_line_id"]: i["storage_path"] for i in imgs}
+        for ln in lines:
+            p = path_by_line.get(ln.claim_line_id)
+            if p:
+                ln.receipt_url = signed_url(p)
     summary = _summary_from_row(claim_res.data, line_count=len(lines))
     return ClaimDetail(**summary.model_dump(), lines=lines)
 

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -131,6 +132,16 @@ export default function EditLineScreen() {
           </Text>
         </View>
 
+        {line.receipt_url ? (
+          <View style={styles.imageWrap}>
+            <Image
+              source={{ uri: line.receipt_url }}
+              style={styles.image}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
+
         <Field label="Date">
           <TextInput
             testID="edit-line-date"
@@ -237,6 +248,13 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, gap: spacing.lg },
   metaRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   metaText: { fontSize: typography.caption, color: colors.textSecondary },
+  imageWrap: {
+    aspectRatio: 0.75,
+    backgroundColor: "#000",
+    borderRadius: radii.card,
+    overflow: "hidden",
+  },
+  image: { width: "100%", height: "100%" },
   label: { fontSize: typography.bodySm, color: colors.textSecondary, fontWeight: typography.medium },
   input: {
     backgroundColor: colors.surface,

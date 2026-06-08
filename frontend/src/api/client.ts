@@ -45,6 +45,7 @@ export type ClaimLine = {
   ai_category_explanation: string | null;
   duplicate_flag: boolean;
   old_receipt_flag: boolean;
+  receipt_url?: string | null;
 };
 
 export type ClaimSummary = {
@@ -201,6 +202,31 @@ export function useDeleteLine(claimId: string) {
   return useMutation({
     mutationFn: (lineId: string) =>
       request<void>(`/lines/${lineId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.claim(claimId) });
+      qc.invalidateQueries({ queryKey: ["claims"] });
+    },
+  });
+}
+
+export function useUploadReceipt(claimId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      lineId,
+      image_base64,
+      width,
+      height,
+    }: {
+      lineId: string;
+      image_base64: string;
+      width?: number;
+      height?: number;
+    }) =>
+      request<ClaimLine>(`/lines/${lineId}/receipt`, {
+        method: "POST",
+        body: JSON.stringify({ image_base64, width, height }),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.claim(claimId) });
       qc.invalidateQueries({ queryKey: ["claims"] });
