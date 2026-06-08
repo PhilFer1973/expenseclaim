@@ -106,6 +106,8 @@ export default function HomeScreen() {
                 title="No submitted claims yet"
                 subtitle="Tap New claim below to start your first expense claim."
                 icon="document-outline"
+                ctaLabel={drafts.length === 0 ? "Start a claim" : undefined}
+                onCtaPress={drafts.length === 0 ? () => router.push("/claim/new") : undefined}
               />
             ) : (
               <View style={{ gap: spacing.md }}>

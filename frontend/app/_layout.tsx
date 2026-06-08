@@ -6,11 +6,18 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
+import { useAppFonts } from "@/src/hooks/use-app-fonts";
+import { applyGlobalFont } from "@/src/theme/apply-global-font";
+
+applyGlobalFont();
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useIconFonts();
+  const [iconsLoaded, iconsError] = useIconFonts();
+  const [appFontsLoaded, appFontsError] = useAppFonts();
+  const loaded = iconsLoaded && appFontsLoaded;
+  const error = iconsError || appFontsError;
   const queryClient = useMemo(
     () =>
       new QueryClient({

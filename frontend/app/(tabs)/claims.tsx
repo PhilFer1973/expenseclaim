@@ -85,6 +85,8 @@ export default function ClaimsScreen() {
             title="Nothing here yet"
             subtitle="Start a new claim to capture your expenses."
             icon="document-outline"
+            ctaLabel="Start a claim"
+            onCtaPress={() => router.push("/claim/new")}
             testID="claims-empty"
           />
         ) : (
