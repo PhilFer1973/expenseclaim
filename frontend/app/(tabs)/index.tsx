@@ -182,7 +182,8 @@ const styles = StyleSheet.create({
   },
   sectionHint: {
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: colors.accent,
     fontStyle: "italic",
+    fontWeight: typography.semibold,
   },
 });

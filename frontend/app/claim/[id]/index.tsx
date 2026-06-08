@@ -265,8 +265,9 @@ const styles = StyleSheet.create({
   errorItem: { fontSize: typography.bodySm, color: colors.textPrimary },
   hint: {
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: colors.accent,
     fontStyle: "italic",
+    fontWeight: typography.semibold,
   },
   submitBar: {
     position: "absolute",

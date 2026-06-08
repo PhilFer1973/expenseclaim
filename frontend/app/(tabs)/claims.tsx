@@ -162,8 +162,9 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
   hint: {
     fontSize: typography.caption,
-    color: colors.textMuted,
+    color: colors.accent,
     fontStyle: "italic",
+    fontWeight: typography.semibold,
     marginBottom: spacing.xs,
   },
 });

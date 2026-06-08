@@ -7,10 +7,11 @@ export const colors = {
   accentInk: "#1d4ed8",
   accentSoft: "#eef3ff",
 
-  // Surfaces
-  pageBg: "#f3f6fb",
-  surface: "#ffffff",
-  hairline: "#e6eaf1",
+  // Surfaces — light metallic grey background with slightly darker glass panes
+  pageBg: "#eaeef3",
+  surface: "#dde3eb",
+  surfaceHighlight: "rgba(255,255,255,0.65)", // top-edge "glass" highlight
+  hairline: "#c8cfd9",
 
   // Text
   textPrimary: "#101729",
@@ -75,10 +76,13 @@ export const typography = {
 export const shadow = {
   card: {
     shadowColor: "#0b1220",
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    // Glass top-edge highlight — looks like a 1px translucent rim.
+    borderWidth: 1,
+    borderColor: colors.surfaceHighlight,
   },
   fab: {
     shadowColor: "#0b1220",
