@@ -170,6 +170,25 @@ export default function EditLineScreen() {
           </View>
         ) : null}
 
+        {line.duplicate_flag && !readOnly ? (
+          <View style={styles.warnBanner}>
+            <Ionicons name="copy-outline" size={18} color={colors.warning} />
+            <Text style={styles.warnText}>
+              Possible duplicate — another line with the same supplier, date, and amount
+              already exists. Review before submitting.
+            </Text>
+          </View>
+        ) : null}
+
+        {line.old_receipt_flag && !readOnly ? (
+          <View style={styles.warnBanner}>
+            <Ionicons name="time-outline" size={18} color={colors.warning} />
+            <Text style={styles.warnText}>
+              This receipt is over 90 days old. Your finance team may query it.
+            </Text>
+          </View>
+        ) : null}
+
         <Field label="Supplier">
           <TextInput
             testID="edit-line-supplier"

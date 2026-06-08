@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useClaim, useDeleteLine, useSubmitClaim } from "@/src/api/client";
+import { ApiError, useClaim, useDeleteLine, useSubmitClaim } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { EmptyState } from "@/src/components/EmptyState";
 import { LineCard } from "@/src/components/LineCard";
@@ -29,6 +29,7 @@ export default function ClaimBuilderScreen() {
   const submit = useSubmitClaim();
   const removeLine = useDeleteLine(id);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   if (claim.isLoading) {
     return (
@@ -54,16 +55,35 @@ export default function ClaimBuilderScreen() {
 
   const onSubmit = async () => {
     setError(null);
+    setValidationErrors([]);
     try {
       await submit.mutateAsync(id);
       router.replace(`/claim/${id}/submitted`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to submit");
+      if (e instanceof ApiError && e.validationErrors?.length) {
+        setValidationErrors(e.validationErrors);
+        setError("Some lines need attention before you can submit.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to submit");
+      }
     }
   };
 
   const lines = claim.data.lines;
-  const canSubmit = lines.length > 0;
+  const incompleteCount = lines.filter(
+    (l) =>
+      !l.category ||
+      !l.narrative_final ||
+      !l.gross_amount ||
+      !l.receipt_date
+  ).length;
+  const flagCount = lines.filter((l) => l.duplicate_flag || l.old_receipt_flag).length;
+  const canSubmit = lines.length > 0 && incompleteCount === 0;
+  const submitLabel = !lines.length
+    ? "Add a line to submit"
+    : incompleteCount > 0
+    ? `Complete ${incompleteCount} line${incompleteCount === 1 ? "" : "s"} to submit`
+    : `Submit claim · ${formatGBP(claim.data.running_gross_total)}`;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -133,13 +153,35 @@ export default function ClaimBuilderScreen() {
           </View>
         )}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {flagCount > 0 ? (
+          <View style={styles.warnBlock}>
+            <Ionicons name="warning-outline" size={18} color={colors.warning} />
+            <Text style={styles.warnText}>
+              {flagCount === 1
+                ? "1 line has a flag (possible duplicate or old receipt). Review it before submitting."
+                : `${flagCount} lines have flags (possible duplicates or old receipts). Review them before submitting.`}
+            </Text>
+          </View>
+        ) : null}
+
+        {validationErrors.length > 0 ? (
+          <View style={styles.errorBlock}>
+            <Text style={styles.errorTitle}>Submission blocked</Text>
+            {validationErrors.map((msg, i) => (
+              <Text key={i} style={styles.errorItem}>• {msg}</Text>
+            ))}
+          </View>
+        ) : null}
+
+        {error && validationErrors.length === 0 ? (
+          <Text style={styles.error}>{error}</Text>
+        ) : null}
       </ScrollView>
 
       <View style={[styles.submitBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <Button
           testID="builder-submit"
-          label={canSubmit ? `Submit claim · ${formatGBP(claim.data.running_gross_total)}` : "Add a line to submit"}
+          label={submitLabel}
           onPress={onSubmit}
           loading={submit.isPending}
           disabled={!canSubmit}
@@ -201,6 +243,27 @@ const styles = StyleSheet.create({
     color: colors.accentInk,
   },
   error: { color: colors.danger, textAlign: "center", marginTop: spacing.md },
+  warnBlock: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: colors.warningSoft,
+    padding: spacing.md,
+    borderRadius: radii.card,
+  },
+  warnText: { flex: 1, fontSize: typography.bodySm, color: colors.textPrimary },
+  errorBlock: {
+    backgroundColor: colors.dangerSoft,
+    padding: spacing.md,
+    borderRadius: radii.card,
+    gap: 4,
+  },
+  errorTitle: {
+    fontSize: typography.bodySm,
+    fontWeight: typography.bold,
+    color: colors.danger,
+  },
+  errorItem: { fontSize: typography.bodySm, color: colors.textPrimary },
   hint: {
     fontSize: typography.caption,
     color: colors.textMuted,

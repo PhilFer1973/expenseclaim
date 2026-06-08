@@ -27,11 +27,20 @@ export function LineCard({
 }) {
   const noReceipt = line.receipt_status === "no_receipt";
   const title = line.supplier_name ?? (noReceipt ? "No-receipt expense" : "Receipt");
+  const incomplete =
+    !line.category ||
+    !line.narrative_final ||
+    !line.gross_amount ||
+    !line.receipt_date;
   return (
     <Pressable
       testID={`line-card-${line.claim_line_id}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && !readOnly && styles.pressed]}
+      style={({ pressed }) => [
+        styles.card,
+        incomplete && !readOnly ? styles.cardIncomplete : null,
+        pressed && !readOnly && styles.pressed,
+      ]}
     >
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
@@ -48,11 +57,23 @@ export function LineCard({
       <View style={styles.row}>
         <StatusPill variant={vatVariant[line.vat_code]} />
         {noReceipt ? <Text style={styles.tag}>No receipt</Text> : null}
+        {incomplete && !readOnly ? (
+          <View style={styles.pillIncomplete}>
+            <Ionicons name="alert-circle" size={12} color={colors.warning} />
+            <Text style={styles.pillIncompleteText}>Incomplete</Text>
+          </View>
+        ) : null}
         {line.duplicate_flag ? (
-          <Text style={[styles.tag, styles.flag]}>Possible duplicate</Text>
+          <View style={styles.pillWarn}>
+            <Ionicons name="copy-outline" size={12} color={colors.warning} />
+            <Text style={styles.pillWarnText}>Possible duplicate</Text>
+          </View>
         ) : null}
         {line.old_receipt_flag ? (
-          <Text style={[styles.tag, styles.flag]}>Old receipt</Text>
+          <View style={styles.pillWarn}>
+            <Ionicons name="time-outline" size={12} color={colors.warning} />
+            <Text style={styles.pillWarnText}>Old receipt</Text>
+          </View>
         ) : null}
         {!readOnly && onDelete ? (
           <Pressable
@@ -107,6 +128,38 @@ const styles = StyleSheet.create({
   },
   tag: { fontSize: typography.micro, color: colors.textSecondary, fontWeight: typography.medium },
   flag: { color: colors.warning, fontWeight: typography.bold },
+  cardIncomplete: {
+    borderColor: colors.warning,
+    borderStyle: "dashed",
+  },
+  pillIncomplete: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.warningSoft,
+  },
+  pillIncompleteText: {
+    fontSize: typography.micro,
+    color: colors.warning,
+    fontWeight: typography.bold,
+  },
+  pillWarn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: colors.warningSoft,
+  },
+  pillWarnText: {
+    fontSize: typography.micro,
+    color: colors.warning,
+    fontWeight: typography.bold,
+  },
   narrative: {
     marginTop: spacing.sm,
     fontSize: typography.bodySm,

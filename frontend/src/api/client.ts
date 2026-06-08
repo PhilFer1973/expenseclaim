@@ -62,6 +62,35 @@ export type ClaimSummary = {
 export type ClaimDetail = ClaimSummary & { lines: ClaimLine[] };
 
 // ---------- low-level fetch ----------
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+  validationErrors?: string[];
+  constructor(status: number, detail: unknown) {
+    let msg: string;
+    let validationErrors: string[] | undefined;
+    if (typeof detail === "string") {
+      msg = detail;
+    } else if (detail && typeof detail === "object") {
+      const d = detail as Record<string, unknown>;
+      if (Array.isArray(d.validation_errors)) {
+        validationErrors = (d.validation_errors as unknown[]).map(String);
+        msg = validationErrors.join("\n");
+      } else if (typeof d.detail === "string") {
+        msg = d.detail;
+      } else {
+        msg = JSON.stringify(d);
+      }
+    } else {
+      msg = String(detail ?? "Request failed");
+    }
+    super(msg);
+    this.status = status;
+    this.detail = detail;
+    this.validationErrors = validationErrors;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -74,11 +103,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       detail = await res.text();
     }
-    const message =
-      typeof detail === "object" && detail && "detail" in detail
-        ? JSON.stringify((detail as { detail: unknown }).detail)
-        : String(detail);
-    throw new Error(`${res.status} ${message}`);
+    // Unwrap FastAPI's { detail: ... } wrapper if present.
+    let inner: unknown = detail;
+    if (
+      detail &&
+      typeof detail === "object" &&
+      "detail" in (detail as Record<string, unknown>)
+    ) {
+      inner = (detail as Record<string, unknown>).detail;
+    }
+    throw new ApiError(res.status, inner);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
