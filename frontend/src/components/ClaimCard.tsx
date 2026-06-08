@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, shadow, spacing, typography } from "@/src/theme/tokens";
 import type { ClaimSummary } from "@/src/api/client";
-import { formatGBP, formatMonthYear } from "@/src/utils/format";
+import { formatGBP, formatUKDate } from "@/src/utils/format";
 
 export function ClaimCard({
   claim,
@@ -28,11 +28,15 @@ export function ClaimCard({
           <Text style={styles.title} numberOfLines={1}>
             {claim.claim_title}
           </Text>
-          <Text style={styles.meta}>
+          <Text style={styles.meta} numberOfLines={1}>
             {claim.claim_ref ?? ""}
             {claim.line_count > 0 ? ` · ${claim.line_count} lines` : ""}
-            {claim.submitted_at ? ` · ${formatMonthYear(claim.submitted_at)}` : ""}
           </Text>
+          {claim.submitted_at ? (
+            <Text style={styles.submittedAt} numberOfLines={1}>
+              Submitted {formatUKDate(claim.submitted_at)}
+            </Text>
+          ) : null}
         </View>
         <StatusPill variant={isDraft ? "draft" : "submitted"} />
       </View>
@@ -78,6 +82,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: typography.caption,
     color: colors.textSecondary,
+  },
+  submittedAt: {
+    marginTop: 2,
+    fontSize: typography.caption,
+    color: colors.textSecondary,
+    fontWeight: typography.medium,
   },
   row: {
     marginTop: spacing.md,
