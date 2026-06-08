@@ -30,25 +30,27 @@ export function GlassPane({
   /** 0..1 — overall glass intensity (1 = max bright). Defaults to 1. */
   intensity?: number;
 }) {
-  const fillTop = `rgba(255,255,255,${0.85 * intensity})`;
-  const fillMid = `rgba(255,255,255,${0.55 * intensity})`;
-  const fillBot = `rgba(255,255,255,${0.35 * intensity})`;
+  // Soft white sheen that sits ON TOP of the darker grey base — gives a
+  // glass-like highlight while preserving the darker grey colour.
+  const sheenTop = `rgba(255,255,255,${0.32 * intensity})`;
+  const sheenMid = `rgba(255,255,255,${0.08 * intensity})`;
+  const sheenBot = `rgba(15,23,42,${0.05 * intensity})`;
   return (
     <View
       testID={testID}
       style={[styles.shell, { borderRadius: radius }, style]}
     >
       <LinearGradient
-        colors={[fillTop, fillMid, fillBot]}
-        locations={[0, 0.45, 1]}
-        start={{ x: 0.0, y: 0.0 }}
-        end={{ x: 1.0, y: 1.0 }}
+        colors={[sheenTop, sheenMid, sheenBot]}
+        locations={[0, 0.55, 1]}
+        start={{ x: 0.1, y: 0.0 }}
+        end={{ x: 0.9, y: 1.0 }}
         style={[StyleSheet.absoluteFillObject, { borderRadius: radius }]}
         pointerEvents="none"
       />
-      {/* Top sheen */}
+      {/* Bright top sheen strip */}
       <LinearGradient
-        colors={["rgba(255,255,255,0.9)", "rgba(255,255,255,0)"]}
+        colors={["rgba(255,255,255,0.7)", "rgba(255,255,255,0)"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={[styles.sheen, { borderTopLeftRadius: radius, borderTopRightRadius: radius }]}

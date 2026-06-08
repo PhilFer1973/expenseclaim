@@ -7,13 +7,13 @@ export const colors = {
   accentInk: "#1d4ed8",
   accentSoft: "#eef3ff",
 
-  // Surfaces — light metallic grey background with bright translucent glass panes
-  pageBg: "#e3e8f0",
-  surface: "rgba(255,255,255,0.55)",          // glassy white-tinted fill
-  surfaceSolid: "#f7faff",                    // opaque variant for sub-elements
-  surfaceHighlight: "rgba(255,255,255,0.9)",  // top-edge "glass" rim
-  surfaceShade: "rgba(15, 23, 42, 0.05)",     // subtle inner darken at bottom
-  hairline: "#c8cfd9",
+  // Surfaces — light metallic grey background, slightly DARKER grey glass panes
+  pageBg: "#eef1f6",                        // light metallic grey
+  surface: "#c9d0db",                       // darker grey pane base (glass tint)
+  surfaceSolid: "#c9d0db",                  // opaque equivalent
+  surfaceHighlight: "rgba(255,255,255,0.85)", // top-edge bright rim
+  surfaceShade: "rgba(15, 23, 42, 0.06)",   // subtle inner darken at bottom
+  hairline: "#b4bbc6",
 
   // Text
   textPrimary: "#101729",
