@@ -112,6 +112,7 @@ export default function ClaimBuilderScreen() {
           />
         ) : (
           <View style={{ gap: spacing.md }}>
+            <Text style={styles.hint}>Select a pane to edit</Text>
             {lines.map((line) => (
               <LineCard
                 key={line.claim_line_id}
@@ -200,6 +201,11 @@ const styles = StyleSheet.create({
     color: colors.accentInk,
   },
   error: { color: colors.danger, textAlign: "center", marginTop: spacing.md },
+  hint: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    fontStyle: "italic",
+  },
   submitBar: {
     position: "absolute",
     bottom: 0,

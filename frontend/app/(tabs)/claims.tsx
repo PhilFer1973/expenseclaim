@@ -89,6 +89,7 @@ export default function ClaimsScreen() {
           />
         ) : (
           <View style={{ gap: spacing.md }}>
+            <Text style={styles.hint}>Select a pane to edit</Text>
             {(claims.data ?? []).map((c) => (
               <ClaimCard
                 key={c.claim_id}
@@ -97,9 +98,6 @@ export default function ClaimsScreen() {
                   router.push(
                     c.status === "draft" ? `/claim/${c.claim_id}` : `/claim/${c.claim_id}/submitted`
                   )
-                }
-                onEdit={
-                  c.status === "draft" ? () => router.push(`/claim/${c.claim_id}`) : undefined
                 }
                 onDelete={
                   c.status === "draft"
@@ -159,4 +157,10 @@ const styles = StyleSheet.create({
   },
   chipTextActive: { color: colors.textOnAccent },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.md },
+  hint: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    fontStyle: "italic",
+    marginBottom: spacing.xs,
+  },
 });

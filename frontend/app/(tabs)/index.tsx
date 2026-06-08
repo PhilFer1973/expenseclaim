@@ -47,7 +47,7 @@ export default function HomeScreen() {
     };
   }, [claims.data]);
 
-  const inProgress = (claims.data ?? []).find((c) => c.status === "draft");
+  const drafts = (claims.data ?? []).filter((c) => c.status === "draft");
   const recent = (claims.data ?? []).filter((c) => c.status === "submitted").slice(0, 6);
 
   return (
@@ -76,19 +76,31 @@ export default function HomeScreen() {
               draftCount={totals.draftCount}
             />
 
-            {inProgress ? (
+            {drafts.length > 0 ? (
               <>
-                <Text style={styles.sectionTitle}>In progress</Text>
-                <ClaimCard
-                  claim={inProgress}
-                  onPress={() => router.push(`/claim/${inProgress.claim_id}`)}
-                  onEdit={() => router.push(`/claim/${inProgress.claim_id}`)}
-                  onDelete={() => promptDelete(inProgress.claim_id, inProgress.claim_title)}
-                />
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>In progress</Text>
+                  <Text style={styles.sectionHint}>Select a pane to edit</Text>
+                </View>
+                <View style={{ gap: spacing.md }}>
+                  {drafts.map((d) => (
+                    <ClaimCard
+                      key={d.claim_id}
+                      claim={d}
+                      onPress={() => router.push(`/claim/${d.claim_id}`)}
+                      onDelete={() => promptDelete(d.claim_id, d.claim_title)}
+                    />
+                  ))}
+                </View>
               </>
             ) : null}
 
-            <Text style={styles.sectionTitle}>Recent</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent</Text>
+              {recent.length > 0 ? (
+                <Text style={styles.sectionHint}>Select a pane to view</Text>
+              ) : null}
+            </View>
             {recent.length === 0 ? (
               <EmptyState
                 title="No submitted claims yet"
@@ -137,5 +149,16 @@ const styles = StyleSheet.create({
     fontSize: typography.h3,
     fontWeight: typography.semibold,
     color: colors.textPrimary,
+  },
+  sectionHeader: {
+    marginTop: spacing.sm,
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  sectionHint: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    fontStyle: "italic",
   },
 });

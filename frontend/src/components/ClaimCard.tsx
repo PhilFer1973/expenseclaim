@@ -10,12 +10,10 @@ import { formatGBP, formatMonthYear } from "@/src/utils/format";
 export function ClaimCard({
   claim,
   onPress,
-  onEdit,
   onDelete,
 }: {
   claim: ClaimSummary;
   onPress: () => void;
-  onEdit?: () => void;
   onDelete?: () => void;
 }) {
   const isDraft = claim.status === "draft";
@@ -40,35 +38,18 @@ export function ClaimCard({
       </View>
       <View style={styles.row}>
         <Text style={styles.amount}>{formatGBP(claim.running_gross_total)}</Text>
-        {isDraft ? (
-          <View style={styles.actions}>
-            {onEdit ? (
-              <Pressable
-                testID={`claim-card-edit-${claim.claim_id}`}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-                hitSlop={10}
-                style={({ pressed }) => [styles.iconBtn, styles.editBtn, pressed && styles.pressed]}
-              >
-                <Ionicons name="pencil" size={18} color={colors.accentInk} />
-              </Pressable>
-            ) : null}
-            {onDelete ? (
-              <Pressable
-                testID={`claim-card-delete-${claim.claim_id}`}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                hitSlop={10}
-                style={({ pressed }) => [styles.iconBtn, styles.deleteBtn, pressed && styles.pressed]}
-              >
-                <Ionicons name="trash-outline" size={18} color={colors.danger} />
-              </Pressable>
-            ) : null}
-          </View>
+        {isDraft && onDelete ? (
+          <Pressable
+            testID={`claim-card-delete-${claim.claim_id}`}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            hitSlop={10}
+            style={({ pressed }) => [styles.iconBtn, styles.deleteBtn, pressed && styles.pressed]}
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.danger} />
+          </Pressable>
         ) : null}
       </View>
     </Pressable>
@@ -121,6 +102,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  editBtn: { backgroundColor: colors.accentSoft },
   deleteBtn: { backgroundColor: colors.dangerSoft },
 });

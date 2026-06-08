@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
-import { useCreateClaim } from "@/src/api/client";
+import { useCreateClaim, useClaims } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 
@@ -21,16 +21,28 @@ export default function NewClaimScreen() {
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const create = useCreateClaim();
+  const existing = useClaims();
   const [error, setError] = useState<string | null>(null);
 
+  const trimmed = title.trim();
+  const duplicate =
+    !!trimmed &&
+    (existing.data ?? []).some(
+      (c) => c.claim_title.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+
   const submit = async () => {
-    if (!title.trim()) {
+    if (!trimmed) {
       setError("Please give your claim a short title.");
+      return;
+    }
+    if (duplicate) {
+      setError("A claim with this title already exists. Please choose a different one.");
       return;
     }
     setError(null);
     try {
-      const claim = await create.mutateAsync(title.trim());
+      const claim = await create.mutateAsync(trimmed);
       router.replace(`/claim/${claim.claim_id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create claim");
@@ -71,6 +83,11 @@ export default function NewClaimScreen() {
         <Text style={styles.hint}>
           You can add receipts and lines on the next screen.
         </Text>
+        {duplicate ? (
+          <Text style={styles.warning}>
+            A claim titled “{trimmed}” already exists. Please choose a different title.
+          </Text>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
 
@@ -80,7 +97,7 @@ export default function NewClaimScreen() {
           label="Create draft"
           onPress={submit}
           loading={create.isPending}
-          disabled={!title.trim()}
+          disabled={!trimmed || duplicate}
         />
       </View>
     </KeyboardAvoidingView>
@@ -110,6 +127,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   hint: { marginTop: 6, fontSize: typography.caption, color: colors.textMuted },
+  warning: { marginTop: spacing.sm, color: colors.warning, fontSize: typography.bodySm },
   error: { marginTop: spacing.sm, color: colors.danger, fontSize: typography.bodySm },
   footer: { padding: spacing.lg, gap: spacing.sm },
 });

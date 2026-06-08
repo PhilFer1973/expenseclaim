@@ -64,12 +64,28 @@ def list_claims(status: Optional[str] = Query(default=None, pattern="^(draft|sub
 @router.post("/claims", response_model=ClaimSummary, status_code=201)
 def create_claim(req: CreateClaimRequest) -> ClaimSummary:
     sb = get_supabase()
+    title = req.title.strip()
+    # Reject duplicate titles for the same employee (case-insensitive).
+    existing = (
+        sb.table("claims")
+        .select("claim_id, claim_title")
+        .eq("employee_id", DEMO_EMPLOYEE_ID)
+        .ilike("claim_title", title)
+        .execute()
+    )
+    if existing.data:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=409,
+            detail=f'A claim titled "{title}" already exists. Please choose a different title.',
+        )
     res = (
         sb.table("claims")
         .insert(
             {
                 "employee_id": DEMO_EMPLOYEE_ID,
-                "claim_title": req.title.strip(),
+                "claim_title": title,
                 "status": "draft",
             }
         )
