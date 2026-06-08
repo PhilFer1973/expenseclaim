@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -9,9 +10,13 @@ import { formatGBP, formatMonthYear } from "@/src/utils/format";
 export function ClaimCard({
   claim,
   onPress,
+  onEdit,
+  onDelete,
 }: {
   claim: ClaimSummary;
   onPress: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const isDraft = claim.status === "draft";
   return (
@@ -35,7 +40,36 @@ export function ClaimCard({
       </View>
       <View style={styles.row}>
         <Text style={styles.amount}>{formatGBP(claim.running_gross_total)}</Text>
-        {isDraft ? <Text style={styles.continueCta}>Continue →</Text> : null}
+        {isDraft ? (
+          <View style={styles.actions}>
+            {onEdit ? (
+              <Pressable
+                testID={`claim-card-edit-${claim.claim_id}`}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                hitSlop={10}
+                style={({ pressed }) => [styles.iconBtn, styles.editBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="pencil" size={18} color={colors.accentInk} />
+              </Pressable>
+            ) : null}
+            {onDelete ? (
+              <Pressable
+                testID={`claim-card-delete-${claim.claim_id}`}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                hitSlop={10}
+                style={({ pressed }) => [styles.iconBtn, styles.deleteBtn, pressed && styles.pressed]}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -75,9 +109,18 @@ const styles = StyleSheet.create({
     fontWeight: typography.bold,
     color: colors.textPrimary,
   },
-  continueCta: {
-    color: colors.accent,
-    fontWeight: typography.semibold,
-    fontSize: typography.bodySm,
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editBtn: { backgroundColor: colors.accentSoft },
+  deleteBtn: { backgroundColor: colors.dangerSoft },
 });

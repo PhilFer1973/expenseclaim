@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useClaims, useMe } from "@/src/api/client";
+import { useClaims, useDeleteClaim, useMe } from "@/src/api/client";
 import { ClaimCard } from "@/src/components/ClaimCard";
 import { EmptyState } from "@/src/components/EmptyState";
 import { Fab } from "@/src/components/Fab";
@@ -22,6 +23,18 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const me = useMe();
   const claims = useClaims();
+  const remove = useDeleteClaim();
+
+  const promptDelete = (claimId: string, title: string) => {
+    Alert.alert("Delete draft?", `"${title}" and all its lines will be removed.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => remove.mutate(claimId),
+      },
+    ]);
+  };
 
   const totals = useMemo(() => {
     const list = claims.data ?? [];
@@ -69,6 +82,8 @@ export default function HomeScreen() {
                 <ClaimCard
                   claim={inProgress}
                   onPress={() => router.push(`/claim/${inProgress.claim_id}`)}
+                  onEdit={() => router.push(`/claim/${inProgress.claim_id}`)}
+                  onDelete={() => promptDelete(inProgress.claim_id, inProgress.claim_title)}
                 />
               </>
             ) : null}

@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useClaim, useDeleteClaim, useDeleteLine, useSubmitClaim } from "@/src/api/client";
+import { useClaim, useDeleteLine, useSubmitClaim } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { EmptyState } from "@/src/components/EmptyState";
 import { LineCard } from "@/src/components/LineCard";
@@ -27,7 +27,6 @@ export default function ClaimBuilderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const claim = useClaim(id);
   const submit = useSubmitClaim();
-  const remove = useDeleteClaim();
   const removeLine = useDeleteLine(id);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,20 +62,6 @@ export default function ClaimBuilderScreen() {
     }
   };
 
-  const onDelete = () => {
-    Alert.alert("Delete draft?", "This will remove the claim and all its lines.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await remove.mutateAsync(id);
-          router.replace("/(tabs)");
-        },
-      },
-    ]);
-  };
-
   const lines = claim.data.lines;
   const canSubmit = lines.length > 0;
 
@@ -87,9 +72,7 @@ export default function ClaimBuilderScreen() {
           <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
         </Pressable>
         <StatusPill variant="draft" />
-        <Pressable testID="builder-delete" onPress={onDelete} hitSlop={12}>
-          <Ionicons name="trash-outline" size={22} color={colors.danger} />
-        </Pressable>
+        <View style={{ width: 26 }} />
       </View>
 
       <ScrollView

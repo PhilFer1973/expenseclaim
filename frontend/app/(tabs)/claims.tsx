@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,7 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useClaims, type ClaimStatus } from "@/src/api/client";
+import { useClaims, useDeleteClaim, type ClaimStatus } from "@/src/api/client";
 import { ClaimCard } from "@/src/components/ClaimCard";
 import { EmptyState } from "@/src/components/EmptyState";
 import { Fab } from "@/src/components/Fab";
@@ -29,6 +30,22 @@ export default function ClaimsScreen() {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<Filter>("all");
   const claims = useClaims(filter === "all" ? undefined : filter);
+  const remove = useDeleteClaim();
+
+  const promptDelete = (claimId: string, title: string) => {
+    Alert.alert(
+      "Delete draft?",
+      `"${title}" and all its lines will be removed.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => remove.mutate(claimId),
+        },
+      ]
+    );
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -80,6 +97,14 @@ export default function ClaimsScreen() {
                   router.push(
                     c.status === "draft" ? `/claim/${c.claim_id}` : `/claim/${c.claim_id}/submitted`
                   )
+                }
+                onEdit={
+                  c.status === "draft" ? () => router.push(`/claim/${c.claim_id}`) : undefined
+                }
+                onDelete={
+                  c.status === "draft"
+                    ? () => promptDelete(c.claim_id, c.claim_title)
+                    : undefined
                 }
               />
             ))}
