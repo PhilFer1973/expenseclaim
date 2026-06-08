@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAddLine, useCategories } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
-import { todayISO } from "@/src/utils/format";
+import { todayUK, ukToISO } from "@/src/utils/format";
 
 export default function NoReceiptLineScreen() {
   const insets = useSafeAreaInsets();
@@ -28,7 +28,7 @@ export default function NoReceiptLineScreen() {
   const [category, setCategory] = useState<string | null>(null);
   const [gross, setGross] = useState("");
   const [narrative, setNarrative] = useState("");
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(todayUK());
   const [error, setError] = useState<string | null>(null);
 
   const grossNum = parseFloat(gross.replace(",", "."));
@@ -43,7 +43,7 @@ export default function NoReceiptLineScreen() {
         category,
         gross_amount: grossNum,
         narrative_final: narrative.trim().slice(0, 50),
-        receipt_date: date || null,
+        receipt_date: ukToISO(date),
       });
       router.replace(`/claim/${id}`);
     } catch (e: unknown) {
@@ -81,7 +81,7 @@ export default function NoReceiptLineScreen() {
             testID="no-receipt-date"
             value={date}
             onChangeText={setDate}
-            placeholder="YYYY-MM-DD"
+            placeholder="dd-mm-yyyy"
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             inputMode="numeric"

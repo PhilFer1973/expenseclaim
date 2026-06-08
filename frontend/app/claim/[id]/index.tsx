@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useClaim, useDeleteClaim, useSubmitClaim } from "@/src/api/client";
+import { useClaim, useDeleteClaim, useDeleteLine, useSubmitClaim } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { EmptyState } from "@/src/components/EmptyState";
 import { LineCard } from "@/src/components/LineCard";
@@ -28,6 +28,7 @@ export default function ClaimBuilderScreen() {
   const claim = useClaim(id);
   const submit = useSubmitClaim();
   const remove = useDeleteClaim();
+  const removeLine = useDeleteLine(id);
   const [error, setError] = useState<string | null>(null);
 
   if (claim.isLoading) {
@@ -133,6 +134,16 @@ export default function ClaimBuilderScreen() {
                 key={line.claim_line_id}
                 line={line}
                 onPress={() => router.push(`/claim/${id}/line/${line.claim_line_id}`)}
+                onDelete={() =>
+                  Alert.alert("Delete line?", "This line will be removed from the claim.", [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Delete",
+                      style: "destructive",
+                      onPress: () => removeLine.mutate(line.claim_line_id),
+                    },
+                  ])
+                }
               />
             ))}
           </View>

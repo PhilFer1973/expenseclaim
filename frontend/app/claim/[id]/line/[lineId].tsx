@@ -19,13 +19,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useCategories,
   useClaim,
-  useDeleteLine,
   useUpdateLine,
   type ClaimLine,
 } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
+import { isoToUK, ukToISO } from "@/src/utils/format";
 
 const VAT_VARIANT = { UK20: "uk20", UK0: "uk0", UNREC: "unrec", REVIEW: "review" } as const;
 
@@ -36,7 +36,6 @@ export default function EditLineScreen() {
   const claim = useClaim(id);
   const categories = useCategories();
   const update = useUpdateLine(id);
-  const remove = useDeleteLine(id);
 
   const line: ClaimLine | undefined = claim.data?.lines.find(
     (l) => l.claim_line_id === lineId
@@ -54,7 +53,7 @@ export default function EditLineScreen() {
       setCategory(line.category);
       setGross(line.gross_amount?.toString() ?? "");
       setNarrative(line.narrative_final ?? "");
-      setDate(line.receipt_date ?? "");
+      setDate(isoToUK(line.receipt_date));
     }
   }, [line]);
 
@@ -77,27 +76,13 @@ export default function EditLineScreen() {
           category,
           gross_amount: isNaN(grossNum) ? null : grossNum,
           narrative_final: narrative.trim().slice(0, 50),
-          receipt_date: date || null,
+          receipt_date: ukToISO(date),
         },
       });
       router.back();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
     }
-  };
-
-  const onDelete = () => {
-    Alert.alert("Delete line?", "This line will be removed.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await remove.mutateAsync(lineId);
-          router.back();
-        },
-      },
-    ]);
   };
 
   return (
@@ -112,13 +97,7 @@ export default function EditLineScreen() {
         <Text style={styles.title}>
           {readOnly ? "Line" : "Edit line"}
         </Text>
-        {!readOnly ? (
-          <Pressable testID="edit-line-delete" onPress={onDelete} hitSlop={12}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </Pressable>
-        ) : (
-          <View style={{ width: 26 }} />
-        )}
+        <View style={{ width: 26 }} />
       </View>
 
       <ScrollView
@@ -148,7 +127,7 @@ export default function EditLineScreen() {
             value={date}
             onChangeText={setDate}
             editable={!readOnly}
-            placeholder="YYYY-MM-DD"
+            placeholder="dd-mm-yyyy"
             placeholderTextColor={colors.textMuted}
             style={[styles.input, readOnly && styles.inputReadOnly]}
             inputMode="numeric"
