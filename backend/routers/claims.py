@@ -51,7 +51,11 @@ def list_claims(status: Optional[str] = Query(default=None, pattern="^(draft|sub
 
     ids = [r["claim_id"] for r in rows]
     counts_res = (
-        sb.table("claim_lines").select("claim_id", count="exact").in_("claim_id", ids).execute()
+        sb.table("claim_lines")
+        .select("claim_id", count="exact")
+        .in_("claim_id", ids)
+        .limit(2000)
+        .execute()
     )
     # Group manually — supabase-py doesn't expose grouped count, so iterate rows.
     by_claim: dict[str, int] = {}
@@ -125,6 +129,7 @@ def get_claim(claim_id: str) -> ClaimDetail:
             .select("claim_line_id, storage_path")
             .in_("claim_line_id", line_ids)
             .eq("is_current", True)
+            .limit(500)
             .execute()
             .data
             or []

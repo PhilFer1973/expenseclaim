@@ -113,6 +113,7 @@ def _check_duplicate(payload: dict, exclude_line_id: str | None = None) -> bool:
         sb.table("claim_lines")
         .select("claim_line_id, supplier_name, receipt_date, gross_amount")
         .eq("receipt_date", rd if isinstance(rd, str) else rd.isoformat())
+        .limit(200)
         .execute()
         .data
         or []
