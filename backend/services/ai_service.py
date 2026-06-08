@@ -155,7 +155,128 @@ async def extract_receipt(image_base64: str) -> dict:
 
 
 async def rerank_categories(line_payload: dict, neighbours: list[dict]) -> dict:
-    raise NotImplementedError("Phase 5")
+    raise NotImplementedError("Phase 5 — use suggest_categories instead")
+
+
+SUGGEST_SYSTEM_PROMPT = """You are a UK SME expense category assistant.
+
+Given:
+- A new receipt line (supplier, optional date, gross amount, optional category hint from vision)
+- A list of allowed categories (with an is_unrecoverable flag)
+- A list of past receipt lines from the same employee with their final categories (these were kNN-similar by embedding)
+
+Pick the THREE most likely categories for the new line, ranked by confidence.
+Prefer categories the employee has used for similar past supplier/narrative patterns.
+For supplier names that obviously map to a category (e.g. "Uber" -> Travel, "Pret" -> Meals),
+prefer that direct mapping even if past lines are sparse.
+
+Return ONLY a JSON object of this exact shape (no prose, no markdown):
+{
+  "ranked": [
+    {"category": "Travel", "confidence": 0.92, "reason": "Past Uber rides categorised as Travel"},
+    {"category": "Meals",  "confidence": 0.05, "reason": "..."},
+    {"category": "Other",  "confidence": 0.03, "reason": "fallback"}
+  ],
+  "explanation": "One short sentence explaining the top pick, no more than 25 words."
+}
+
+Rules:
+- "ranked" must have exactly 3 entries.
+- "category" must be EXACTLY one of the allowed category names provided.
+- "confidence" values must sum to ~1.0 (rough; we will normalise client-side).
+- Output VALID JSON only.
+"""
+
+
+async def suggest_categories(
+    line: dict,
+    categories: list[dict],
+    neighbours: list[dict],
+) -> dict:
+    """Use Claude to rerank candidate categories given the new line + kNN neighbours.
+
+    Returns dict shape:
+      {
+        "ranked": [{"category": str, "confidence": float, "reason": str}, ...],  # len 3
+        "explanation": str,
+      }
+    """
+    api_key = os.getenv("EMERGENT_LLM_KEY")
+    if not api_key:
+        raise RuntimeError("EMERGENT_LLM_KEY is not configured")
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"cat-suggest-{uuid.uuid4()}",
+        system_message=SUGGEST_SYSTEM_PROMPT,
+    ).with_model(MODEL_PROVIDER, MODEL_NAME)
+
+    payload = {
+        "new_line": {
+            "supplier_name": line.get("supplier_name"),
+            "receipt_date": line.get("receipt_date"),
+            "gross_amount": float(line.get("gross_amount")) if line.get("gross_amount") is not None else None,
+            "narrative_final": line.get("narrative_final"),
+            "category_hint": line.get("category_hint"),
+        },
+        "allowed_categories": [
+            {"name": c["name"], "is_unrecoverable": bool(c.get("is_unrecoverable"))}
+            for c in categories
+        ],
+        "past_lines_knn": [
+            {
+                "supplier_name": n.get("supplier_name"),
+                "category": n.get("category"),
+                "narrative_final": n.get("narrative_final"),
+                "gross_amount": float(n["gross_amount"]) if n.get("gross_amount") is not None else None,
+                "receipt_date": str(n.get("receipt_date")) if n.get("receipt_date") else None,
+                "similarity": round(float(n.get("similarity", 0)), 3),
+            }
+            for n in neighbours
+        ],
+    }
+
+    user_msg = UserMessage(text=json.dumps(payload))
+    try:
+        raw = await chat.send_message(user_msg)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Claude category rerank failed")
+        raise RuntimeError(f"Category suggestion failed: {exc}") from exc
+
+    text = raw if isinstance(raw, str) else str(raw)
+    parsed = _parse_json_object(text) or {}
+    ranked = parsed.get("ranked") or []
+    # Validate categories against allowlist; drop unknowns.
+    allowed = {c["name"] for c in categories}
+    cleaned = []
+    for r in ranked:
+        if not isinstance(r, dict):
+            continue
+        name = r.get("category")
+        if name not in allowed:
+            continue
+        try:
+            conf = float(r.get("confidence") or 0.0)
+        except (TypeError, ValueError):
+            conf = 0.0
+        cleaned.append({"category": name, "confidence": conf, "reason": (r.get("reason") or "")[:140]})
+    # Ensure we always return 3 (pad with remaining allowed cats).
+    used = {c["category"] for c in cleaned}
+    for c in categories:
+        if len(cleaned) >= 3:
+            break
+        if c["name"] not in used:
+            cleaned.append({"category": c["name"], "confidence": 0.0, "reason": "fallback"})
+    cleaned = cleaned[:3]
+    # Normalise to sum-to-1 ish (purely cosmetic).
+    total = sum(c["confidence"] for c in cleaned) or 1.0
+    for c in cleaned:
+        c["confidence"] = round(c["confidence"] / total, 3)
+
+    return {
+        "ranked": cleaned,
+        "explanation": (parsed.get("explanation") or "").strip()[:240],
+    }
 
 
 async def summarise_narrative(text: str) -> str:

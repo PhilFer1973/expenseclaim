@@ -40,50 +40,41 @@ def _is_emergent_key(key: str) -> bool:
 
 async def embed(text: str) -> list[float]:
     """Embed a single text string and return a 1536-d float list."""
-    key = os.getenv("EMERGENT_LLM_KEY")
-    if not key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured")
+    openai_key = os.getenv("OPENAI_API_KEY")
     if not text.strip():
-        # Return a zero vector for empty input rather than calling the API.
         return [0.0] * EMBEDDING_DIM
 
-    kwargs: dict = {
-        "model": EMBEDDING_MODEL,
-        "input": text,
-        "api_key": key,
-    }
-    if _is_emergent_key(key):
-        kwargs["api_base"] = get_integration_proxy_url() + "/llm"
-        kwargs["custom_llm_provider"] = "openai"
+    if openai_key:
+        # Call OpenAI directly — preferred (lowest latency, full feature support).
+        try:
+            resp = await litellm.aembedding(
+                model=EMBEDDING_MODEL,
+                input=text,
+                api_key=openai_key,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("OpenAI embedding call failed")
+            raise RuntimeError(f"Embedding call failed: {exc}") from exc
+        data = getattr(resp, "data", None) or resp.get("data", [])
+        if not data:
+            raise RuntimeError("Embedding response missing data")
+        return list(data[0]["embedding"])
 
-    try:
-        resp = await litellm.aembedding(**kwargs)
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Embedding call failed")
-        raise RuntimeError(f"Embedding call failed: {exc}") from exc
-
-    data = getattr(resp, "data", None) or resp.get("data", [])
-    if not data:
-        raise RuntimeError("Embedding response missing data")
-    return list(data[0]["embedding"])
+    raise RuntimeError("OPENAI_API_KEY is not configured")
 
 
 async def embed_many(texts: Iterable[str]) -> list[list[float]]:
-    """Embed multiple texts in a single API call when possible."""
+    """Embed multiple texts in a single API call."""
     items = [t if t and t.strip() else " " for t in texts]
     if not items:
         return []
-    key = os.getenv("EMERGENT_LLM_KEY")
-    if not key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured")
-    kwargs: dict = {
-        "model": EMBEDDING_MODEL,
-        "input": items,
-        "api_key": key,
-    }
-    if _is_emergent_key(key):
-        kwargs["api_base"] = get_integration_proxy_url() + "/llm"
-        kwargs["custom_llm_provider"] = "openai"
-    resp = await litellm.aembedding(**kwargs)
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+    resp = await litellm.aembedding(
+        model=EMBEDDING_MODEL,
+        input=items,
+        api_key=openai_key,
+    )
     data = getattr(resp, "data", None) or resp.get("data", [])
     return [list(d["embedding"]) for d in data]

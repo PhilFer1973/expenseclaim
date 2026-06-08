@@ -16,8 +16,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from models import ClaimLine
-from services.ai_service import extract_receipt
+from services.ai_service import extract_receipt, suggest_categories
 from services.audit_service import log as audit_log
+from services.embedding_service import (
+    embed,
+    embedding_source_hash,
+    embedding_source_text,
+)
 from services.flags_service import is_old_receipt, normalise_supplier
 from services.storage_service import download_receipt
 from services.supabase_client import get_supabase
@@ -206,4 +211,112 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
             "confidence": confidence,
             "notes": extracted.get("notes"),
         },
+    )
+
+
+
+class SuggestRequest(BaseModel):
+    line_id: str = Field(min_length=1)
+
+
+class SuggestResponse(BaseModel):
+    ranked: list[dict[str, Any]]
+    explanation: str
+    neighbour_count: int
+
+
+@router.post("/suggest-category", response_model=SuggestResponse)
+async def suggest_category_endpoint(req: SuggestRequest) -> SuggestResponse:
+    sb = get_supabase()
+    line_rows = (
+        sb.table("claim_lines")
+        .select("*")
+        .eq("claim_line_id", req.line_id)
+        .execute()
+        .data
+        or []
+    )
+    if not line_rows:
+        raise HTTPException(status_code=404, detail="Line not found")
+    line = line_rows[0]
+
+    # Categories
+    categories = (
+        sb.table("categories")
+        .select("name, is_unrecoverable")
+        .order("sort_order")
+        .execute()
+        .data
+        or []
+    )
+
+    # Embedding for the line
+    src_text = embedding_source_text(line)
+    try:
+        vec = await embed(src_text)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Embedding failed")
+        raise HTTPException(status_code=502, detail=f"Embedding failed: {exc}") from exc
+
+    # Persist the embedding (upsert) so this line participates in future kNN.
+    try:
+        sb.table("receipt_embeddings").upsert(
+            {
+                "claim_line_id": req.line_id,
+                "embedding": vec,
+                "source_hash": embedding_source_hash(src_text),
+            }
+        ).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Embedding upsert failed: %s", exc)
+
+    # kNN over past lines via pgvector RPC.
+    neighbours: list[dict] = []
+    try:
+        knn_res = sb.rpc(
+            "match_receipt_lines",
+            {
+                "query_embedding": vec,
+                "for_employee_id": DEMO_EMPLOYEE_ID,
+                "match_limit": 8,
+                "min_similarity": 0.0,
+            },
+        ).execute()
+        neighbours = [n for n in (knn_res.data or []) if n.get("claim_line_id") != req.line_id]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("kNN RPC failed: %s", exc)
+
+    # Claude rerank
+    try:
+        result = await suggest_categories(line, categories, neighbours)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Claude rerank failed")
+        raise HTTPException(status_code=502, detail=f"Suggestion failed: {exc}") from exc
+
+    # Persist soft suggestion on the line so the UI badge can come back later.
+    try:
+        sb.table("claim_lines").update(
+            {
+                "ai_category_suggestions": result["ranked"],
+                "ai_category_explanation": result["explanation"],
+            }
+        ).eq("claim_line_id", req.line_id).execute()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Persist suggestions failed: %s", exc)
+
+    audit_log(
+        event_type="category_suggested",
+        claim_id=line["claim_id"],
+        claim_line_id=req.line_id,
+        employee_id=DEMO_EMPLOYEE_ID,
+        payload={
+            "top": result["ranked"][0] if result["ranked"] else None,
+            "neighbour_count": len(neighbours),
+        },
+    )
+
+    return SuggestResponse(
+        ranked=result["ranked"],
+        explanation=result["explanation"],
+        neighbour_count=len(neighbours),
     )

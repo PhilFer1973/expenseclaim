@@ -19,7 +19,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useCategories,
   useClaim,
+  useSuggestCategory,
   useUpdateLine,
+  type CategorySuggestion,
   type ClaimLine,
 } from "@/src/api/client";
 import { Button } from "@/src/components/Button";
@@ -36,6 +38,7 @@ export default function EditLineScreen() {
   const claim = useClaim(id);
   const categories = useCategories();
   const update = useUpdateLine(id);
+  const suggest = useSuggestCategory();
 
   const line: ClaimLine | undefined = claim.data?.lines.find(
     (l) => l.claim_line_id === lineId
@@ -48,6 +51,9 @@ export default function EditLineScreen() {
   const [narrative, setNarrative] = useState("");
   const [date, setDate] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<CategorySuggestion[]>([]);
+  const [aiExplanation, setAiExplanation] = useState<string>("");
+  const [aiTriedFor, setAiTriedFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (line) {
@@ -56,8 +62,35 @@ export default function EditLineScreen() {
       setGross(line.gross_amount?.toString() ?? "");
       setNarrative(line.narrative_final ?? "");
       setDate(isoToUK(line.receipt_date));
+      // Hydrate persisted suggestions from the row if present.
+      if (Array.isArray(line.ai_category_suggestions)) {
+        setAiSuggestions(line.ai_category_suggestions as CategorySuggestion[]);
+      }
+      if (line.ai_category_explanation) {
+        setAiExplanation(line.ai_category_explanation);
+      }
     }
   }, [line]);
+
+  // Auto-trigger category suggestions once per line, in the background, only
+  // if there's enough context to be useful (supplier OR gross) and the user
+  // hasn't already picked a category.
+  useEffect(() => {
+    if (!line || readOnly) return;
+    if (aiTriedFor === line.claim_line_id) return;
+    if (line.category) return;
+    if (!line.supplier_name && !line.gross_amount && !line.narrative_final) return;
+    setAiTriedFor(line.claim_line_id);
+    suggest
+      .mutateAsync({ lineId: line.claim_line_id })
+      .then((res) => {
+        setAiSuggestions(res.ranked);
+        setAiExplanation(res.explanation);
+      })
+      .catch(() => {
+        // Silent — manual chips still work.
+      });
+  }, [line, readOnly, aiTriedFor, suggest]);
 
   if (claim.isLoading || !line) {
     return (
@@ -173,6 +206,54 @@ export default function EditLineScreen() {
         </Field>
 
         <Field label="Category">
+          {aiSuggestions.length > 0 && !readOnly ? (
+            <View style={styles.aiBlock}>
+              <View style={styles.aiHeader}>
+                <Ionicons name="sparkles" size={14} color={colors.accentInk} />
+                <Text style={styles.aiHeaderText}>AI suggestions</Text>
+                {suggest.isPending ? (
+                  <ActivityIndicator size="small" color={colors.accentInk} />
+                ) : null}
+              </View>
+              <View style={styles.chipsWrap}>
+                {aiSuggestions.map((s, idx) => {
+                  const active = s.category === category;
+                  return (
+                    <Pressable
+                      key={`${s.category}-${idx}`}
+                      testID={`edit-line-ai-cat-${s.category}`}
+                      onPress={() => setCategory(s.category)}
+                      style={[styles.aiChip, active && styles.aiChipActive]}
+                    >
+                      <Ionicons
+                        name="sparkles"
+                        size={12}
+                        color={active ? colors.textOnAccent : colors.accentInk}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text
+                        style={[styles.aiChipText, active && styles.aiChipTextActive]}
+                      >
+                        {s.category}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.aiChipScore,
+                          active && styles.aiChipTextActive,
+                        ]}
+                      >
+                        {" "}
+                        {Math.round((s.confidence || 0) * 100)}%
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {aiExplanation ? (
+                <Text style={styles.aiExplanation}>{aiExplanation}</Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.chipsWrap}>
             {(categories.data ?? []).map((c) => {
               const active = c.name === category;
@@ -294,6 +375,52 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { fontSize: typography.bodySm, color: colors.textSecondary, fontWeight: typography.semibold },
   chipTextActive: { color: colors.textOnAccent },
+  aiBlock: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.field,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  aiHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  aiHeaderText: {
+    flex: 1,
+    fontSize: typography.caption,
+    fontWeight: typography.semibold,
+    color: colors.accentInk,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  aiChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    height: 36,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  aiChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  aiChipText: {
+    fontSize: typography.bodySm,
+    fontWeight: typography.semibold,
+    color: colors.accentInk,
+  },
+  aiChipScore: {
+    fontSize: typography.caption,
+    color: colors.accentInk,
+  },
+  aiChipTextActive: { color: colors.textOnAccent },
+  aiExplanation: {
+    fontSize: typography.caption,
+    color: colors.textSecondary,
+    fontStyle: "italic",
+  },
   counter: { alignSelf: "flex-end", fontSize: typography.caption, color: colors.textMuted },
   error: { color: colors.danger, fontSize: typography.bodySm },
   footer: {

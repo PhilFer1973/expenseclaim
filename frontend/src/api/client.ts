@@ -246,6 +246,28 @@ export type ExtractedReceipt = {
   notes: string | null;
 };
 
+export type CategorySuggestion = {
+  category: string;
+  confidence: number;
+  reason: string;
+};
+
+export type SuggestCategoryResponse = {
+  ranked: CategorySuggestion[];
+  explanation: string;
+  neighbour_count: number;
+};
+
+export function useSuggestCategory() {
+  return useMutation({
+    mutationFn: ({ lineId }: { lineId: string }) =>
+      request<SuggestCategoryResponse>(`/ai/suggest-category`, {
+        method: "POST",
+        body: JSON.stringify({ line_id: lineId }),
+      }),
+  });
+}
+
 export function useExtractReceipt(claimId: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -13,11 +13,16 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from models import ClaimLine, LineWriteRequest
 from services.audit_service import log as audit_log
+from services.embedding_service import (
+    embed,
+    embedding_source_hash,
+    embedding_source_text,
+)
 from services.flags_service import is_old_receipt, normalise_supplier
 from services.storage_service import (
     delete_receipt as storage_delete,
@@ -31,6 +36,28 @@ from services.vat_service import compute_vat_code
 router = APIRouter(tags=["lines"])
 
 DEMO_EMPLOYEE_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _refresh_embedding(line: dict) -> None:
+    """Recompute the embedding for a line and upsert it. Best-effort, fire-and-forget."""
+    import asyncio
+    import logging
+
+    log = logging.getLogger("lines._refresh_embedding")
+    try:
+        src = embedding_source_text(line)
+        if not src.strip():
+            return
+        vec = asyncio.run(embed(src))
+        get_supabase().table("receipt_embeddings").upsert(
+            {
+                "claim_line_id": line["claim_line_id"],
+                "embedding": vec,
+                "source_hash": embedding_source_hash(src),
+            }
+        ).execute()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Embedding refresh failed for line %s: %s", line.get("claim_line_id"), exc)
 
 
 def _claim_status(claim_id: str) -> str:
@@ -157,7 +184,7 @@ def get_line(line_id: str) -> ClaimLine:
 
 
 @router.patch("/lines/{line_id}", response_model=ClaimLine)
-def update_line(line_id: str, req: LineWriteRequest) -> ClaimLine:
+def update_line(line_id: str, req: LineWriteRequest, background_tasks: BackgroundTasks) -> ClaimLine:
     sb = get_supabase()
     cur = sb.table("claim_lines").select("*").eq("claim_line_id", line_id).single().execute()
     if not cur.data:
@@ -187,6 +214,12 @@ def update_line(line_id: str, req: LineWriteRequest) -> ClaimLine:
         employee_id=DEMO_EMPLOYEE_ID,
         payload={"fields": list(payload.keys())},
     )
+    # Refresh the embedding in the background if any embedding-affecting field changed.
+    if any(
+        k in payload
+        for k in ("supplier_name", "category", "narrative_final", "receipt_number", "gross_amount")
+    ):
+        background_tasks.add_task(_refresh_embedding, row)
     return _line_with_url(row)
 
 
