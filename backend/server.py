@@ -84,23 +84,34 @@ def diag_import_supabase_client() -> dict:
     return {"status": "ok", "step": "import-supabase-client"}
 
 
+@app.get("/api/diag/env-check")
+def diag_env_check() -> dict:
+    """Check env vars are present (values hidden)."""
+    import os
+    return {
+        "SUPABASE_URL": "SET" if os.getenv("SUPABASE_URL") else "MISSING",
+        "SUPABASE_SERVICE_ROLE_KEY": "SET" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") else "MISSING",
+        "ANTHROPIC_API_KEY": "SET" if os.getenv("ANTHROPIC_API_KEY") else "MISSING",
+        "OPENAI_API_KEY": "SET" if os.getenv("OPENAI_API_KEY") else "MISSING",
+    }
+
+
 @app.get("/api/diag/connect-supabase")
 def diag_connect_supabase() -> dict:
     """Step 5: call get_supabase() — creates the client (needs env vars)."""
     import os
-    import traceback
-    url = os.getenv("SUPABASE_URL", "NOT SET")
-    key_set = bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
-    print(f">>> diag: SUPABASE_URL={url} key_set={key_set}", flush=True)
+    print(f">>> diag: SUPABASE_URL set={bool(os.getenv('SUPABASE_URL'))}", flush=True)
+    print(f">>> diag: SUPABASE_SERVICE_ROLE_KEY set={bool(os.getenv('SUPABASE_SERVICE_ROLE_KEY'))}", flush=True)
     try:
         from services.supabase_client import get_supabase
+        print(">>> diag: calling get_supabase()", flush=True)
         client = get_supabase()
-        print(f">>> diag: get_supabase() returned {type(client).__name__}", flush=True)
-        return {"status": "ok", "step": "connect-supabase", "client": type(client).__name__}
+        print(f">>> diag: get_supabase() OK type={type(client).__name__}", flush=True)
+        return {"status": "ok", "step": "connect-supabase"}
     except Exception as exc:
-        tb = traceback.format_exc()
-        print(f">>> diag: get_supabase() FAILED: {exc}\n{tb}", flush=True)
-        return {"status": "error", "step": "connect-supabase", "error": str(exc), "traceback": tb}
+        msg = str(exc)[:500]
+        print(f">>> diag: get_supabase() FAILED: {msg}", flush=True)
+        return {"status": "error", "step": "connect-supabase", "error": msg}
 
 
 @app.get("/api/diag/import-me-router")
