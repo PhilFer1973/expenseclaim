@@ -86,13 +86,19 @@ def diag_import_supabase_client() -> dict:
 
 @app.get("/api/diag/env-check")
 def diag_env_check() -> dict:
-    """Check env vars are present (values hidden)."""
+    """Check env vars — shows first 10 and last 4 chars to verify correct value."""
     import os
+    def peek(val: str | None) -> str:
+        if not val:
+            return "MISSING"
+        if len(val) <= 14:
+            return f"SET (len={len(val)})"
+        return f"{val[:10]}...{val[-4:]} (len={len(val)})"
     return {
-        "SUPABASE_URL": "SET" if os.getenv("SUPABASE_URL") else "MISSING",
-        "SUPABASE_SERVICE_ROLE_KEY": "SET" if os.getenv("SUPABASE_SERVICE_ROLE_KEY") else "MISSING",
-        "ANTHROPIC_API_KEY": "SET" if os.getenv("ANTHROPIC_API_KEY") else "MISSING",
-        "OPENAI_API_KEY": "SET" if os.getenv("OPENAI_API_KEY") else "MISSING",
+        "SUPABASE_URL": peek(os.getenv("SUPABASE_URL")),
+        "SUPABASE_SERVICE_ROLE_KEY": peek(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+        "ANTHROPIC_API_KEY": peek(os.getenv("ANTHROPIC_API_KEY")),
+        "OPENAI_API_KEY": peek(os.getenv("OPENAI_API_KEY")),
     }
 
 
