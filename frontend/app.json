@@ -62,6 +62,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e3c53cba-377d-46a4-b6ef-083fa507efbb"
+      }
+    },
+    "owner": "philfer"
   }
 }
