@@ -12,11 +12,16 @@ print(">>> server.py: importing FastAPI", flush=True)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# ── Routers disabled for minimal boot diagnostic ──────────────────────────
-# from dotenv import load_dotenv
-# from pathlib import Path
-# load_dotenv(Path(__file__).parent / ".env")
-# from routers import ai, categories, claims, lines, me
+from dotenv import load_dotenv
+from pathlib import Path
+load_dotenv(Path(__file__).parent / ".env")
+
+print(">>> server.py: importing router: me", flush=True)
+from routers import me
+print(">>> server.py: router me OK", flush=True)
+
+# ── Remaining routers re-enabled one at a time after /health confirmed ────
+# from routers import categories, claims, lines, ai
 # ─────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -37,8 +42,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers disabled for minimal boot diagnostic ──────────────────────────
-# app.include_router(me.router, prefix="/api")
+app.include_router(me.router, prefix="/api")
+
+# ── Remaining routers re-enabled one at a time after /health confirmed ────
 # app.include_router(categories.router, prefix="/api")
 # app.include_router(claims.router, prefix="/api")
 # app.include_router(lines.router, prefix="/api")
