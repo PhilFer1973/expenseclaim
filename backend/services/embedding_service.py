@@ -29,9 +29,6 @@ def embedding_source_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
 
 
-def _is_emergent_key(key: str) -> bool:
-    return bool(key) and key.startswith("sk-emergent-")
-
 
 async def embed(text: str) -> list[float]:
     """Embed a single text string and return a 1536-d float list."""
