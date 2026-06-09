@@ -87,11 +87,20 @@ def diag_import_supabase_client() -> dict:
 @app.get("/api/diag/connect-supabase")
 def diag_connect_supabase() -> dict:
     """Step 5: call get_supabase() — creates the client (needs env vars)."""
-    print(">>> diag: calling get_supabase()", flush=True)
-    from services.supabase_client import get_supabase
-    client = get_supabase()
-    print(f">>> diag: get_supabase() returned {type(client).__name__}", flush=True)
-    return {"status": "ok", "step": "connect-supabase", "client": type(client).__name__}
+    import os
+    import traceback
+    url = os.getenv("SUPABASE_URL", "NOT SET")
+    key_set = bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+    print(f">>> diag: SUPABASE_URL={url} key_set={key_set}", flush=True)
+    try:
+        from services.supabase_client import get_supabase
+        client = get_supabase()
+        print(f">>> diag: get_supabase() returned {type(client).__name__}", flush=True)
+        return {"status": "ok", "step": "connect-supabase", "client": type(client).__name__}
+    except Exception as exc:
+        tb = traceback.format_exc()
+        print(f">>> diag: get_supabase() FAILED: {exc}\n{tb}", flush=True)
+        return {"status": "error", "step": "connect-supabase", "error": str(exc), "traceback": tb}
 
 
 @app.get("/api/diag/import-me-router")
