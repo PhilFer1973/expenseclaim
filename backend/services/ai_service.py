@@ -13,11 +13,10 @@ import re
 import uuid
 from typing import Any
 
-from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
+import anthropic
 
 logger = logging.getLogger(__name__)
 
-MODEL_PROVIDER = "anthropic"
 MODEL_NAME = "claude-sonnet-4-5-20250929"
 
 EXTRACT_SYSTEM_PROMPT = """You are a receipt OCR assistant for a UK SME expense app.
@@ -49,6 +48,13 @@ Rules:
 """
 
 
+def _get_client() -> anthropic.Anthropic:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+    return anthropic.Anthropic(api_key=api_key)
+
+
 def _strip_data_url(image_b64: str) -> str:
     """Strip a data:image/...;base64, prefix if present."""
     if image_b64.startswith("data:"):
@@ -69,7 +75,6 @@ def _coerce_number(v: Any) -> float | None:
 def _coerce_date(v: Any) -> str | None:
     if not isinstance(v, str):
         return None
-    # Accept YYYY-MM-DD
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
         return v
     return None
@@ -79,12 +84,10 @@ def _parse_json_object(text: str) -> dict | None:
     """Be tolerant: strip fences or pre/post prose."""
     if not text:
         return None
-    # Try direct first
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    # Strip markdown fences
     m = re.search(r"\{.*\}", text, flags=re.DOTALL)
     if not m:
         return None
@@ -95,37 +98,40 @@ def _parse_json_object(text: str) -> dict | None:
 
 
 async def extract_receipt(image_base64: str) -> dict:
-    """Run Claude Sonnet 4.5 Vision on a receipt image. Returns structured fields.
-
-    The returned dict always contains:
-      supplier_name, supplier_vat_number, receipt_date, currency,
-      gross_amount, vat_amount, net_amount, category_hint,
-      image_quality, confidence, notes, raw_model_response
-    """
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured")
-
+    """Run Claude Vision on a receipt image. Returns structured fields."""
+    client = _get_client()
     image_b64 = _strip_data_url(image_base64)
 
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"receipt-extract-{uuid.uuid4()}",
-        system_message=EXTRACT_SYSTEM_PROMPT,
-    ).with_model(MODEL_PROVIDER, MODEL_NAME)
-
-    user_msg = UserMessage(
-        text="Extract the structured receipt fields from this image. Respond with JSON only.",
-        file_contents=[ImageContent(image_base64=image_b64)],
-    )
-
     try:
-        raw = await chat.send_message(user_msg)
-    except Exception as exc:  # noqa: BLE001
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=1024,
+            system=EXTRACT_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "Extract the structured receipt fields from this image. Respond with JSON only.",
+                        },
+                    ],
+                }
+            ],
+        )
+    except Exception as exc:
         logger.exception("Claude vision extract failed")
         raise RuntimeError(f"Vision call failed: {exc}") from exc
 
-    text = raw if isinstance(raw, str) else str(raw)
+    text = response.content[0].text if response.content else ""
     parsed = _parse_json_object(text) or {}
 
     result = {
@@ -143,7 +149,6 @@ async def extract_receipt(image_base64: str) -> dict:
         "raw_model_response": text,
     }
 
-    # Derive net if missing
     if (
         result["net_amount"] is None
         and result["gross_amount"] is not None
@@ -193,23 +198,8 @@ async def suggest_categories(
     categories: list[dict],
     neighbours: list[dict],
 ) -> dict:
-    """Use Claude to rerank candidate categories given the new line + kNN neighbours.
-
-    Returns dict shape:
-      {
-        "ranked": [{"category": str, "confidence": float, "reason": str}, ...],  # len 3
-        "explanation": str,
-      }
-    """
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise RuntimeError("EMERGENT_LLM_KEY is not configured")
-
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"cat-suggest-{uuid.uuid4()}",
-        system_message=SUGGEST_SYSTEM_PROMPT,
-    ).with_model(MODEL_PROVIDER, MODEL_NAME)
+    """Use Claude to rerank candidate categories given the new line + kNN neighbours."""
+    client = _get_client()
 
     payload = {
         "new_line": {
@@ -236,17 +226,21 @@ async def suggest_categories(
         ],
     }
 
-    user_msg = UserMessage(text=json.dumps(payload))
     try:
-        raw = await chat.send_message(user_msg)
-    except Exception as exc:  # noqa: BLE001
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=1024,
+            system=SUGGEST_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": json.dumps(payload)}],
+        )
+    except Exception as exc:
         logger.exception("Claude category rerank failed")
         raise RuntimeError(f"Category suggestion failed: {exc}") from exc
 
-    text = raw if isinstance(raw, str) else str(raw)
+    text = response.content[0].text if response.content else ""
     parsed = _parse_json_object(text) or {}
     ranked = parsed.get("ranked") or []
-    # Validate categories against allowlist; drop unknowns.
+
     allowed = {c["name"] for c in categories}
     cleaned = []
     for r in ranked:
@@ -260,7 +254,7 @@ async def suggest_categories(
         except (TypeError, ValueError):
             conf = 0.0
         cleaned.append({"category": name, "confidence": conf, "reason": (r.get("reason") or "")[:140]})
-    # Ensure we always return 3 (pad with remaining allowed cats).
+
     used = {c["category"] for c in cleaned}
     for c in categories:
         if len(cleaned) >= 3:
@@ -268,7 +262,7 @@ async def suggest_categories(
         if c["name"] not in used:
             cleaned.append({"category": c["name"], "confidence": 0.0, "reason": "fallback"})
     cleaned = cleaned[:3]
-    # Normalise to sum-to-1 ish (purely cosmetic).
+
     total = sum(c["confidence"] for c in cleaned) or 1.0
     for c in cleaned:
         c["confidence"] = round(c["confidence"] / total, 3)
@@ -297,28 +291,22 @@ async def summarise_narrative(text: str) -> str:
     cleaned = (text or "").strip()
     if not cleaned:
         return ""
-    # Fast path — already short enough.
     if len(cleaned) <= 50 and "\n" not in cleaned:
         return cleaned
 
-    api_key = os.getenv("EMERGENT_LLM_KEY")
-    if not api_key:
-        # Fallback: naive truncate.
-        return cleaned[:50].rstrip()
-
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"narrative-sum-{uuid.uuid4()}",
-        system_message=SUMMARISE_SYSTEM_PROMPT,
-    ).with_model(MODEL_PROVIDER, MODEL_NAME)
-
     try:
-        raw = await chat.send_message(UserMessage(text=cleaned))
-    except Exception as exc:  # noqa: BLE001
+        client = _get_client()
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=64,
+            system=SUMMARISE_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": cleaned}],
+        )
+        raw = response.content[0].text if response.content else ""
+    except Exception as exc:
         logger.warning("summarise_narrative failed, falling back: %s", exc)
         return cleaned[:50].rstrip()
 
-    out = (raw if isinstance(raw, str) else str(raw)).strip().splitlines()[0]
-    # Strip surrounding quotes if any
-    out = out.strip('"\u2018\u2019\u201c\u201d ')
+    out = raw.strip().splitlines()[0]
+    out = out.strip('"‘’“” ')
     return out[:50].rstrip()

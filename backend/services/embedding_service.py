@@ -1,8 +1,4 @@
-"""OpenAI text-embedding-3-small (1536-d) via Emergent Universal Key.
-
-Routed through the same integration proxy used by emergentintegrations.LlmChat,
-so the EMERGENT_LLM_KEY works for embeddings too.
-"""
+"""OpenAI text-embedding-3-small (1536-d) via direct OpenAI API."""
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +7,6 @@ import os
 from typing import Iterable
 
 import litellm
-from emergentintegrations.llm.utils import get_integration_proxy_url
 
 logger = logging.getLogger(__name__)
 
