@@ -6,7 +6,7 @@
     "preinstall": "./scripts/check-pkg.js",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
+    "android": "expo start --android --dev-client",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint"
@@ -24,6 +24,7 @@
     "date-fns": "4.1.0",
     "dayjs": "1.11.13",
     "expo": "~54.0.35",
+    "expo-dev-client": "~5.1.12",
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
