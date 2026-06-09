@@ -17,6 +17,7 @@
       }
     },
     "android": {
+      "package": "com.philfer.expenseclaims",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#2563eb"
