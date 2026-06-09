@@ -16,12 +16,8 @@ from dotenv import load_dotenv
 from pathlib import Path
 load_dotenv(Path(__file__).parent / ".env")
 
-print(">>> server.py: importing router: me", flush=True)
-from routers import me
-print(">>> server.py: router me OK", flush=True)
-
-# ── Remaining routers re-enabled one at a time after /health confirmed ────
-# from routers import categories, claims, lines, ai
+# ── Routers disabled — diagnosing which import causes hang ───────────────
+# from routers import me, categories, claims, lines, ai
 # ─────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -42,13 +38,70 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(me.router, prefix="/api")
-
-# ── Remaining routers re-enabled one at a time after /health confirmed ────
+# ── Routers disabled — diagnosing which import causes hang ───────────────
+# app.include_router(me.router, prefix="/api")
 # app.include_router(categories.router, prefix="/api")
 # app.include_router(claims.router, prefix="/api")
 # app.include_router(lines.router, prefix="/api")
 # app.include_router(ai.router, prefix="/api")
+# ─────────────────────────────────────────────────────────────────────────
+
+# ── Inline diagnostic routes (no router file imports) ────────────────────
+
+print(">>> server.py: registering diagnostic routes", flush=True)
+
+
+@app.get("/api/diag/ping")
+def diag_ping() -> dict:
+    """Step 1: pure FastAPI, no imports beyond what's already loaded."""
+    return {"status": "ok", "step": "ping"}
+
+
+@app.get("/api/diag/import-models")
+def diag_import_models() -> dict:
+    """Step 2: import models.py (pure Pydantic, no network)."""
+    print(">>> diag: importing models", flush=True)
+    import models  # noqa: F401
+    print(">>> diag: models OK", flush=True)
+    return {"status": "ok", "step": "import-models"}
+
+
+@app.get("/api/diag/import-supabase-pkg")
+def diag_import_supabase_pkg() -> dict:
+    """Step 3: import the supabase package itself (no connection yet)."""
+    print(">>> diag: importing supabase package", flush=True)
+    import supabase  # noqa: F401
+    print(">>> diag: supabase package OK", flush=True)
+    return {"status": "ok", "step": "import-supabase-pkg"}
+
+
+@app.get("/api/diag/import-supabase-client")
+def diag_import_supabase_client() -> dict:
+    """Step 4: import our supabase_client module (no connection yet)."""
+    print(">>> diag: importing services.supabase_client", flush=True)
+    from services import supabase_client  # noqa: F401
+    print(">>> diag: services.supabase_client OK", flush=True)
+    return {"status": "ok", "step": "import-supabase-client"}
+
+
+@app.get("/api/diag/connect-supabase")
+def diag_connect_supabase() -> dict:
+    """Step 5: call get_supabase() — creates the client (needs env vars)."""
+    print(">>> diag: calling get_supabase()", flush=True)
+    from services.supabase_client import get_supabase
+    client = get_supabase()
+    print(f">>> diag: get_supabase() returned {type(client).__name__}", flush=True)
+    return {"status": "ok", "step": "connect-supabase", "client": type(client).__name__}
+
+
+@app.get("/api/diag/import-me-router")
+def diag_import_me_router() -> dict:
+    """Step 6: import routers/me.py (imports models + supabase_client)."""
+    print(">>> diag: importing routers.me", flush=True)
+    from routers import me  # noqa: F401
+    print(">>> diag: routers.me OK", flush=True)
+    return {"status": "ok", "step": "import-me-router"}
+
 # ─────────────────────────────────────────────────────────────────────────
 
 print(">>> server.py: app created, registering routes", flush=True)
