@@ -1,30 +1,28 @@
 """SME Expense Claims — FastAPI server.
-All routes under /api per ingress config.
+MINIMAL BOOT: only /health and / are active.
+Routers are commented out while diagnosing Azure 504 hang.
 """
 from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).parent / ".env")
 
 print(">>> server.py: importing FastAPI", flush=True)
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-print(">>> server.py: importing routers", flush=True)
-
-from routers import ai, categories, claims, lines, me  # noqa: E402
+# ── Routers disabled for minimal boot diagnostic ──────────────────────────
+# from dotenv import load_dotenv
+# from pathlib import Path
+# load_dotenv(Path(__file__).parent / ".env")
+# from routers import ai, categories, claims, lines, me
+# ─────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-
 logger = logging.getLogger(__name__)
 
 print(">>> server.py: creating FastAPI app", flush=True)
@@ -39,11 +37,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(me.router, prefix="/api")
-app.include_router(categories.router, prefix="/api")
-app.include_router(claims.router, prefix="/api")
-app.include_router(lines.router, prefix="/api")
-app.include_router(ai.router, prefix="/api")
+# ── Routers disabled for minimal boot diagnostic ──────────────────────────
+# app.include_router(me.router, prefix="/api")
+# app.include_router(categories.router, prefix="/api")
+# app.include_router(claims.router, prefix="/api")
+# app.include_router(lines.router, prefix="/api")
+# app.include_router(ai.router, prefix="/api")
+# ─────────────────────────────────────────────────────────────────────────
+
+print(">>> server.py: app created, registering routes", flush=True)
 
 
 @app.on_event("startup")
@@ -53,7 +55,15 @@ async def on_startup() -> None:
     print(f">>> on_startup: PORT={port}", flush=True)
 
 
+@app.get("/")
+def root() -> dict:
+    return {"message": "Expense Claims API running"}
+
+
 @app.get("/health")
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+print(">>> server.py: module load complete", flush=True)
