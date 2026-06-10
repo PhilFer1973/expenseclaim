@@ -1,42 +1,42 @@
-// Direction A — "Clean & Corporate" design tokens.
-// Source: project pack `Direction-A.html` README.
+// "Frosted Blue" design tokens.
+// Light blue-grey background, translucent white glass panels, blue accents.
 
 export const colors = {
   // Brand
   accent: "#2563eb",
   accentInk: "#1d4ed8",
-  accentSoft: "#eef3ff",
+  accentSoft: "#dbeafe",
 
-  // Surfaces — light metallic grey background, slightly DARKER grey glass panes
-  pageBg: "#eef1f6",                        // light metallic grey
-  surface: "#c9d0db",                       // darker grey pane base (glass tint)
-  surfaceSolid: "#c9d0db",                  // opaque equivalent
-  surfaceHighlight: "rgba(255,255,255,0.85)", // top-edge bright rim
-  surfaceShade: "rgba(15, 23, 42, 0.06)",   // subtle inner darken at bottom
-  hairline: "#b4bbc6",
+  // Surfaces
+  pageBg: "#e9edf5",                          // light blue-grey page background
+  surface: "rgba(255,255,255,0.55)",           // frosted white glass panel
+  surfaceSolid: "#dde6f5",                    // opaque equivalent for nav/tabs
+  surfaceHighlight: "rgba(255,255,255,0.80)", // top-edge bright rim
+  surfaceShade: "rgba(16,23,41,0.04)",        // subtle inner shadow at bottom
+  hairline: "rgba(255,255,255,0.65)",         // panel border
 
   // Text
-  textPrimary: "#101729",
-  textSecondary: "#5b6577",
-  textMuted: "#8b95a7",
+  textPrimary: "#0f172a",
+  textSecondary: "#64748b",
+  textMuted: "#94a3b8",
   textOnAccent: "#ffffff",
 
   // Status
   success: "#0f9d58",
   successSoft: "#e6f5ed",
   warning: "#d97706",
-  warningSoft: "#fdf1e0",
+  warningSoft: "#fef3c7",
   danger: "#dc2626",
-  dangerSoft: "#fde8e8",
+  dangerSoft: "#fee2e2",
 
-  // VAT code badge colours (derived from status palette)
+  // VAT code badge colours
   vatUK20Bg: "#e6f5ed",
   vatUK20Fg: "#0f9d58",
-  vatUK0Bg: "#eef3ff",
+  vatUK0Bg: "#dbeafe",
   vatUK0Fg: "#2563eb",
-  vatUNRECBg: "#f1f1f4",
-  vatUNRECFg: "#5b6577",
-  vatREVIEWBg: "#fdf1e0",
+  vatUNRECBg: "#f1f5f9",
+  vatUNRECFg: "#64748b",
+  vatREVIEWBg: "#fef3c7",
   vatREVIEWFg: "#d97706",
 } as const;
 
@@ -77,19 +77,19 @@ export const typography = {
 
 export const shadow = {
   card: {
-    shadowColor: "#0b1220",
-    shadowOpacity: 0.12,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
-    borderWidth: 1.5,
-    borderColor: colors.surfaceHighlight,
+    shadowColor: "#1e3a8a",
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.hairline,
   },
   fab: {
-    shadowColor: "#0b1220",
+    shadowColor: "#1e3a8a",
     shadowOpacity: 0.22,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
 } as const;
