@@ -83,7 +83,7 @@ export default function SubmittedClaimScreen() {
               key={line.claim_line_id}
               line={line}
               readOnly
-              onPress={() => {}}
+              onPress={() => router.push(`/claim/${id}/line/${line.claim_line_id}`)}
             />
           ))}
         </View>

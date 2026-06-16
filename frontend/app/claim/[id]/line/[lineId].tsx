@@ -104,12 +104,14 @@ export default function EditLineScreen() {
 
   const grossNum = parseFloat(gross.replace(",", "."));
 
-  // Submit-time required fields (mirror backend validate_line_for_submit):
-  // category, narrative, and a positive gross amount. Mark these in red while
-  // incomplete so the user knows what still needs filling before submit.
+  // Required fields — mirror the app's own completeness check (LineCard /
+  // claim builder incompleteCount): date, gross > 0, category, narrative.
+  // Mark these in red while incomplete so the user knows what still needs
+  // filling before the claim can be submitted.
   const grossIncomplete = isNaN(grossNum) || grossNum <= 0;
   const categoryIncomplete = !category;
   const narrativeIncomplete = !narrative.trim();
+  const dateIncomplete = !ukToISO(date);
 
   const onSave = async () => {
     setError(null);
@@ -207,7 +209,7 @@ export default function EditLineScreen() {
           />
         </Field>
 
-        <Field label="Date">
+        <Field label="Date" required={!readOnly} incomplete={dateIncomplete}>
           <TextInput
             testID="edit-line-date"
             value={date}
