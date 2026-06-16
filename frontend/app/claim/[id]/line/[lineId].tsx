@@ -28,7 +28,7 @@ import { Button } from "@/src/components/Button";
 import { NarrativeRecorder } from "@/src/components/NarrativeRecorder";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
-import { isoToUK, ukToISO } from "@/src/utils/format";
+import { formatUKDateInput, isoToUK, ukToISO } from "@/src/utils/format";
 
 const VAT_VARIANT = { UK20: "uk20", UK0: "uk0", UNREC: "unrec", REVIEW: "review" } as const;
 
@@ -61,7 +61,7 @@ export default function EditLineScreen() {
     if (line) {
       setCategory(line.category);
       setSupplier(line.supplier_name ?? "");
-      setGross(line.gross_amount?.toString() ?? "");
+      setGross(line.gross_amount != null ? Number(line.gross_amount).toFixed(2) : "");
       setNarrative(line.narrative_final ?? "");
       setDate(isoToUK(line.receipt_date));
       // Hydrate persisted suggestions from the row if present.
@@ -103,6 +103,13 @@ export default function EditLineScreen() {
   }
 
   const grossNum = parseFloat(gross.replace(",", "."));
+
+  // Submit-time required fields (mirror backend validate_line_for_submit):
+  // category, narrative, and a positive gross amount. Mark these in red while
+  // incomplete so the user knows what still needs filling before submit.
+  const grossIncomplete = isNaN(grossNum) || grossNum <= 0;
+  const categoryIncomplete = !category;
+  const narrativeIncomplete = !narrative.trim();
 
   const onSave = async () => {
     setError(null);
@@ -204,16 +211,17 @@ export default function EditLineScreen() {
           <TextInput
             testID="edit-line-date"
             value={date}
-            onChangeText={setDate}
+            onChangeText={(t) => setDate(formatUKDateInput(t))}
             editable={!readOnly}
             placeholder="dd-mm-yyyy"
             placeholderTextColor={colors.textMuted}
             style={[styles.input, readOnly && styles.inputReadOnly]}
             inputMode="numeric"
+            maxLength={10}
           />
         </Field>
 
-        <Field label="Gross amount (£)">
+        <Field label="Gross amount (£)" required={!readOnly} incomplete={grossIncomplete}>
           <TextInput
             testID="edit-line-gross"
             value={gross}
@@ -226,7 +234,7 @@ export default function EditLineScreen() {
           />
         </Field>
 
-        <Field label="Category">
+        <Field label="Category" required={!readOnly} incomplete={categoryIncomplete}>
           {aiSuggestions.length > 0 && !readOnly ? (
             <View style={styles.aiBlock}>
               <View style={styles.aiHeader}>
@@ -295,7 +303,7 @@ export default function EditLineScreen() {
           </View>
         </Field>
 
-        <Field label="Narrative (max 50 chars)">
+        <Field label="Narrative (max 50 chars)" required={!readOnly} incomplete={narrativeIncomplete}>
           <NarrativeRecorder
             testID="edit-line-narrative"
             value={narrative}
@@ -333,10 +341,25 @@ export default function EditLineScreen() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  required,
+  incomplete,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  incomplete?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {required ? (
+          <Text style={incomplete ? styles.asteriskRequired : styles.asteriskOk}> *</Text>
+        ) : null}
+      </Text>
       {children}
     </View>
   );
@@ -373,6 +396,8 @@ const styles = StyleSheet.create({
   },
   warnText: { flex: 1, fontSize: typography.bodySm, color: colors.textPrimary },
   label: { fontSize: typography.bodySm, color: colors.textSecondary, fontWeight: typography.medium },
+  asteriskRequired: { color: colors.danger, fontWeight: typography.bold },
+  asteriskOk: { color: colors.textMuted, fontWeight: typography.bold },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,

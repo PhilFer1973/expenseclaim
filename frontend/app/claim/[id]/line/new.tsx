@@ -35,7 +35,6 @@ export default function NewLineChooserScreen() {
             <Text style={styles.optionSubtitle}>
               Capture a photo. AI fills in supplier, amounts and category.
             </Text>
-            <Text style={styles.comingSoon}>Coming next — Phase 3</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         </Pressable>
@@ -97,11 +96,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: typography.caption,
     color: colors.textSecondary,
-  },
-  comingSoon: {
-    marginTop: 4,
-    fontSize: typography.micro,
-    fontWeight: typography.bold,
-    color: colors.warning,
   },
 });

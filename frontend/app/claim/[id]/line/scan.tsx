@@ -13,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -26,6 +27,7 @@ type Captured = { uri: string; base64: string; width: number; height: number };
 
 export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [permission, requestPermission] = useCameraPermissions();
@@ -48,16 +50,37 @@ export default function ScanReceiptScreen() {
         skipProcessing: false,
       });
       if (!shot) return;
-      // Compress to <=200KB target: 1600px long edge + JPEG q=0.7
-      const compressed = await ImageManipulator.manipulateAsync(
-        shot.uri,
-        [{ resize: { width: 1600 } }],
-        {
-          compress: 0.7,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
+
+      // The live preview fills the screen using a "cover" crop, but the saved
+      // photo is the full (wider) sensor frame — so the receipt looks more
+      // zoomed-out than what was framed. Crop the photo to the screen's aspect
+      // ratio, centred, so the result matches what the user lined up.
+      const ops: ImageManipulator.Action[] = [];
+      const screenAspect = winW / winH;
+      const photoAspect = shot.width / shot.height;
+      let effectiveWidth = shot.width;
+      if (Math.abs(photoAspect - screenAspect) > 0.01) {
+        let cropW = shot.width;
+        let cropH = shot.height;
+        if (photoAspect > screenAspect) {
+          cropW = Math.round(shot.height * screenAspect);
+        } else {
+          cropH = Math.round(shot.width / screenAspect);
         }
-      );
+        const originX = Math.round((shot.width - cropW) / 2);
+        const originY = Math.round((shot.height - cropH) / 2);
+        ops.push({ crop: { originX, originY, width: cropW, height: cropH } });
+        effectiveWidth = cropW;
+      }
+      // Compress to <=200KB target: cap to 1600px long edge + JPEG q=0.7
+      if (effectiveWidth > 1600) {
+        ops.push({ resize: { width: 1600 } });
+      }
+      const compressed = await ImageManipulator.manipulateAsync(shot.uri, ops, {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      });
       setCaptured({
         uri: compressed.uri,
         base64: compressed.base64 ?? "",

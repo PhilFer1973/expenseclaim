@@ -45,6 +45,22 @@ export function isoToUK(iso: string | null | undefined): string {
   return formatUKDate(iso);
 }
 
+/**
+ * Progressively format raw keypad input into dd-mm-yyyy as the user types.
+ * Strips non-digits and inserts the dashes automatically, so a numeric
+ * keypad (no dash key) can still enter a full date. "07122018" → "07-12-2018".
+ */
+export function formatUKDateInput(raw: string | null | undefined): string {
+  const digits = (raw ?? "").replace(/\D/g, "").slice(0, 8);
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  let out = dd;
+  if (digits.length > 2) out += `-${mm}`;
+  if (digits.length > 4) out += `-${yyyy}`;
+  return out;
+}
+
 export function todayUK(): string {
   return formatUKDate(new Date().toISOString());
 }
