@@ -6,7 +6,10 @@ import logging
 import os
 from typing import Iterable
 
-import litellm
+# NOTE: litellm is imported lazily inside the functions that use it.
+# Its top-level import is very heavy (several seconds) and was blocking
+# app startup long enough for Azure to kill the container. Importing it
+# on first embedding call keeps boot fast.
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ async def embed(text: str) -> list[float]:
 
     if openai_key:
         # Call OpenAI directly — preferred (lowest latency, full feature support).
+        import litellm  # lazy import — heavy module, see note at top
         try:
             resp = await litellm.aembedding(
                 model=EMBEDDING_MODEL,
@@ -63,6 +67,7 @@ async def embed_many(texts: Iterable[str]) -> list[list[float]]:
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise RuntimeError("OPENAI_API_KEY is not configured")
+    import litellm  # lazy import — heavy module, see note at top
     resp = await litellm.aembedding(
         model=EMBEDDING_MODEL,
         input=items,
