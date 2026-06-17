@@ -28,7 +28,7 @@ import { Button } from "@/src/components/Button";
 import { NarrativeRecorder } from "@/src/components/NarrativeRecorder";
 import { StatusPill } from "@/src/components/StatusPill";
 import { colors, radii, spacing, typography } from "@/src/theme/tokens";
-import { formatUKDateInput, isoToUK, ukToISO } from "@/src/utils/format";
+import { formatGBP, formatUKDateInput, isoToUK, ukToISO } from "@/src/utils/format";
 
 const VAT_VARIANT = { UK20: "uk20", UK0: "uk0", UNREC: "unrec", REVIEW: "review" } as const;
 
@@ -236,6 +236,35 @@ export default function EditLineScreen() {
           />
         </Field>
 
+        {line.vat_amount != null && Number(line.vat_amount) > 0 ? (
+          <View style={styles.breakdownCard} testID="edit-line-vat-breakdown">
+            <Text style={styles.breakdownTitle}>VAT breakdown</Text>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Net</Text>
+              <Text style={styles.breakdownValue}>
+                {formatGBP(
+                  line.net_amount != null
+                    ? line.net_amount
+                    : line.gross_amount != null
+                    ? Number(line.gross_amount) - Number(line.vat_amount)
+                    : null
+                )}
+              </Text>
+            </View>
+            <View style={styles.breakdownRow}>
+              <View style={styles.breakdownVatLabel}>
+                <Text style={styles.breakdownLabel}>VAT</Text>
+                <StatusPill variant={VAT_VARIANT[line.vat_code]} />
+              </View>
+              <Text style={styles.breakdownValue}>{formatGBP(line.vat_amount)}</Text>
+            </View>
+            <View style={[styles.breakdownRow, styles.breakdownTotalRow]}>
+              <Text style={styles.breakdownLabelStrong}>Gross</Text>
+              <Text style={styles.breakdownValueStrong}>{formatGBP(line.gross_amount)}</Text>
+            </View>
+          </View>
+        ) : null}
+
         <Field label="Category" required={!readOnly} incomplete={categoryIncomplete}>
           {aiSuggestions.length > 0 && !readOnly ? (
             <View style={styles.aiBlock}>
@@ -411,6 +440,42 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   inputReadOnly: { backgroundColor: colors.pageBg, color: colors.textSecondary },
+  breakdownCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.hairline,
+    borderRadius: radii.card,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  breakdownTitle: {
+    fontSize: typography.caption,
+    fontWeight: typography.semibold,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  breakdownVatLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  breakdownLabel: { fontSize: typography.body, color: colors.textSecondary },
+  breakdownValue: { fontSize: typography.body, color: colors.textPrimary, fontWeight: typography.medium },
+  breakdownTotalRow: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.hairline,
+  },
+  breakdownLabelStrong: { fontSize: typography.body, color: colors.textPrimary, fontWeight: typography.semibold },
+  breakdownValueStrong: { fontSize: typography.h3, color: colors.textPrimary, fontWeight: typography.bold },
   chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     paddingHorizontal: spacing.lg,
