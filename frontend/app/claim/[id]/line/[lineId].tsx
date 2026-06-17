@@ -50,6 +50,7 @@ export default function EditLineScreen() {
   const [category, setCategory] = useState<string | null>(null);
   const [supplier, setSupplier] = useState("");
   const [gross, setGross] = useState("");
+  const [vat, setVat] = useState("");
   const [narrative, setNarrative] = useState("");
   const [date, setDate] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export default function EditLineScreen() {
       setCategory(line.category);
       setSupplier(line.supplier_name ?? "");
       setGross(line.gross_amount != null ? Number(line.gross_amount).toFixed(2) : "");
+      setVat(line.vat_amount != null ? Number(line.vat_amount).toFixed(2) : "");
       setNarrative(line.narrative_final ?? "");
       setDate(isoToUK(line.receipt_date));
       // Hydrate persisted suggestions from the row if present.
@@ -103,6 +105,14 @@ export default function EditLineScreen() {
   }
 
   const grossNum = parseFloat(gross.replace(",", "."));
+  const vatNum = parseFloat(vat.replace(",", "."));
+  const isReceipt = line.receipt_status === "receipt";
+
+  // Net is always Gross − VAT (VAT defaults to 0 when blank). Display-only;
+  // the backend recomputes and stores it on save.
+  const netComputed = !isNaN(grossNum)
+    ? grossNum - (isNaN(vatNum) ? 0 : vatNum)
+    : null;
 
   // Required fields — mirror the app's own completeness check (LineCard /
   // claim builder incompleteCount): date, gross > 0, category, narrative.
@@ -122,6 +132,8 @@ export default function EditLineScreen() {
           category,
           supplier_name: supplier.trim() || null,
           gross_amount: isNaN(grossNum) ? null : grossNum,
+          // VAT is user-editable on receipt lines; backend derives net & vat_code.
+          ...(isReceipt ? { vat_amount: isNaN(vatNum) ? 0 : vatNum } : {}),
           narrative_final: narrative.trim().slice(0, 50),
           receipt_date: ukToISO(date),
         },
@@ -154,7 +166,7 @@ export default function EditLineScreen() {
         <View style={styles.metaRow}>
           <StatusPill variant={VAT_VARIANT[line.vat_code]} />
           <Text style={styles.metaText}>
-            {line.receipt_status === "no_receipt" ? "No receipt" : "Receipt"} · VAT locked
+            {line.receipt_status === "no_receipt" ? "No receipt" : "Receipt"} · VAT code set automatically
           </Text>
         </View>
 
@@ -166,6 +178,19 @@ export default function EditLineScreen() {
               resizeMode="contain"
             />
           </View>
+        ) : null}
+
+        {isReceipt && !readOnly ? (
+          <Pressable
+            testID="edit-line-retake"
+            onPress={() => router.push(`/claim/${id}/line/scan?lineId=${lineId}`)}
+            style={({ pressed }) => [styles.retakeBtn, pressed && { opacity: 0.85 }]}
+          >
+            <Ionicons name="camera-outline" size={18} color={colors.accentInk} />
+            <Text style={styles.retakeText}>
+              {line.receipt_url ? "Retake photo" : "Take photo"}
+            </Text>
+          </Pressable>
         ) : null}
 
         {line.image_quality_status === "blurry" && !readOnly ? (
@@ -236,7 +261,29 @@ export default function EditLineScreen() {
           />
         </Field>
 
-        {line.vat_amount != null && Number(line.vat_amount) > 0 ? (
+        {isReceipt && !readOnly ? (
+          <>
+            <Field label="VAT amount (£)">
+              <TextInput
+                testID="edit-line-vat"
+                value={vat}
+                onChangeText={(t) => setVat(t.replace(/[^0-9.,]/g, ""))}
+                placeholder="0.00"
+                placeholderTextColor={colors.textMuted}
+                style={styles.input}
+                inputMode="decimal"
+              />
+            </Field>
+            <View style={styles.netRow}>
+              <Text style={styles.netLabel}>Net (Gross − VAT)</Text>
+              <Text style={styles.netValue} testID="edit-line-net">
+                {formatGBP(netComputed)}
+              </Text>
+            </View>
+          </>
+        ) : null}
+
+        {readOnly && line.vat_amount != null && Number(line.vat_amount) > 0 ? (
           <View style={styles.breakdownCard} testID="edit-line-vat-breakdown">
             <Text style={styles.breakdownTitle}>VAT breakdown</Text>
             <View style={styles.breakdownRow}>
@@ -440,6 +487,29 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   inputReadOnly: { backgroundColor: colors.pageBg, color: colors.textSecondary },
+  retakeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.field,
+    paddingVertical: spacing.md,
+  },
+  retakeText: {
+    fontSize: typography.bodySm,
+    fontWeight: typography.semibold,
+    color: colors.accentInk,
+  },
+  netRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  netLabel: { fontSize: typography.bodySm, color: colors.textSecondary },
+  netValue: { fontSize: typography.body, color: colors.textPrimary, fontWeight: typography.semibold },
   breakdownCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

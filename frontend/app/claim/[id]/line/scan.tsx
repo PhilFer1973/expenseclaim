@@ -29,7 +29,8 @@ export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `lineId` is present when retaking the photo for an existing line.
+  const { id, lineId: existingLineId } = useLocalSearchParams<{ id: string; lineId?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const [captured, setCaptured] = useState<Captured | null>(null);
@@ -99,11 +100,13 @@ export default function ScanReceiptScreen() {
     setError(null);
     setWorking(true);
     try {
-      // 1. Create the line (receipt path; fields will be filled by Claude Vision).
-      const line = await addLine.mutateAsync({ receipt_status: "receipt" });
-      // 2. Upload the image to that line.
+      // 1. Reuse the existing line when retaking; otherwise create a new one.
+      const targetLineId = existingLineId
+        ? existingLineId
+        : (await addLine.mutateAsync({ receipt_status: "receipt" })).claim_line_id;
+      // 2. Upload the image to that line (replaces any current image).
       await uploadReceipt.mutateAsync({
-        lineId: line.claim_line_id,
+        lineId: targetLineId,
         image_base64: captured.base64,
         width: captured.width,
         height: captured.height,
@@ -111,7 +114,7 @@ export default function ScanReceiptScreen() {
       // 3. Run Claude Vision extraction. Show the scanning overlay while it works.
       setScanning(true);
       try {
-        await extract.mutateAsync({ lineId: line.claim_line_id });
+        await extract.mutateAsync({ lineId: targetLineId });
       } catch (extractError) {
         // Non-fatal — the user can still fill the line manually.
         // eslint-disable-next-line no-console
@@ -119,8 +122,8 @@ export default function ScanReceiptScreen() {
       } finally {
         setScanning(false);
       }
-      // 4. Go to review screen so the user can confirm extracted fields.
-      router.replace(`/claim/${id}/line/${line.claim_line_id}`);
+      // 4. Go to the line detail so the user can confirm extracted fields.
+      router.replace(`/claim/${id}/line/${targetLineId}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
       setScanning(false);
