@@ -39,7 +39,9 @@ Return ONLY a JSON object with this exact shape (no prose, no markdown fences):
 
 Rules:
 - Read every value EXACTLY as printed on the receipt. Never estimate, round, infer, or invent a date or amount. If a specific field is not clearly legible, return null for that field rather than guessing.
-- Prefer the explicitly printed totals: use the printed "Total" for gross_amount, the printed VAT line for vat_amount, and the printed net/subtotal for net_amount. Do not recalculate them unless a value is missing.
+- gross_amount is the TOTAL AMOUNT PAID — the figure on the main "Total" / "Balance Due" / "Amount Due" / "Paid" / "Card" line in the body of the receipt. It is the LARGEST money total and is what the customer was charged.
+- Many receipts print a VAT summary near the bottom (e.g. "VAT @ 20%", or a "Totals" line showing the VAT amount and the NET/ex-VAT amount). Use that section for vat_amount and net_amount. The NET figure in the VAT summary is NOT the gross — do NOT use it as gross_amount even if its line is labelled "Total" or "Totals".
+- Reconciliation: gross_amount must equal net_amount + vat_amount, and gross_amount must be the largest of the three. If your chosen values do not reconcile, you have mislabelled them — re-read the receipt and correct before answering.
 - All amounts are positive decimal numbers in major currency units (e.g. 12.34).
 - If VAT is not printed but a UK VAT number is visible AND gross is known, set vat_amount to round(gross/6, 2) (standard 20% inclusive) ONLY IF you are confident the receipt is VAT-inclusive; otherwise leave null.
 - receipt_date must be in ISO-8601 (YYYY-MM-DD). Read dates carefully:
