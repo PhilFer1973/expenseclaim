@@ -125,11 +125,12 @@ export default function ScanReceiptScreen() {
         setScanning(false);
       }
 
-      // 4. No guessing: bounce genuinely unreadable scans back for a retake.
+      // 4. No guessing: only accept a sharp, confident read. A "blurry" image
+      //    makes the model confabulate amounts, so bounce it for a rescan.
       const unreliable =
         !extracted ||
-        extracted.image_quality === "unreadable" ||
-        (extracted.confidence ?? 0) < 0.55 ||
+        extracted.image_quality !== "ok" ||
+        (extracted.confidence ?? 0) < 0.7 ||
         extracted.gross_amount == null;
       if (unreliable) {
         setNotReadable(true);
@@ -179,8 +180,10 @@ export default function ScanReceiptScreen() {
         <View style={styles.notReadableBanner}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
           <Text style={styles.warnText}>
-            We couldn&apos;t read this receipt clearly, so nothing has been filled in.
-            Rescan for a clearer image, or enter the details without a receipt.
+            This photo was too blurry to read accurately, so nothing has been
+            filled in. For a sharp scan: lay the receipt flat on a surface, keep
+            your fingers off the text, use good light, and hold the phone steady
+            and parallel until it focuses. Then rescan — or enter without a receipt.
           </Text>
         </View>
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
