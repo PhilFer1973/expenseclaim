@@ -13,7 +13,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,16 +29,12 @@ import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 
 type Captured = { uri: string; base64: string; width: number; height: number };
 
-// On-screen capture guide geometry. The captured photo is cropped to this
-// region (mapped through the camera's "cover" scaling) so the receipt fills
-// the analysed image regardless of how far away the phone is held.
+// On-screen framing-guide geometry (visual aid only).
 const GUIDE_W_FRAC = 0.86; // guide width as a fraction of screen width
 const GUIDE_ASPECT = 0.66; // guide width / height (portrait receipt shape)
-const CROP_MARGIN = 1.08; // capture slightly larger than the guide so it can't clip
 
 export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
-  const { width: winW, height: winH } = useWindowDimensions();
   const router = useRouter();
   // `lineId` is present when retaking the photo for an existing line.
   const { id, lineId: existingLineId } = useLocalSearchParams<{ id: string; lineId?: string }>();
@@ -71,31 +66,19 @@ export default function ScanReceiptScreen() {
       });
       if (!shot) return;
 
-      // Crop to the on-screen guide box so the receipt fills the analysed
-      // image. The camera preview fills the screen using "cover" scaling, so a
-      // photo pixel maps to `s` screen pixels; invert that to turn the centred
-      // guide rectangle (screen px) into a centred crop on the full photo.
-      const actions: ImageManipulator.Action[] = [];
-      const s = Math.max(winW / shot.width, winH / shot.height);
-      if (isFinite(s) && s > 0) {
-        const guideWscreen = GUIDE_W_FRAC * winW;
-        const guideHscreen = guideWscreen / GUIDE_ASPECT;
-        let cropW = Math.round((guideWscreen / s) * CROP_MARGIN);
-        let cropH = Math.round((guideHscreen / s) * CROP_MARGIN);
-        cropW = Math.min(cropW, shot.width);
-        cropH = Math.min(cropH, shot.height);
-        const originX = Math.round((shot.width - cropW) / 2);
-        const originY = Math.round((shot.height - cropH) / 2);
-        actions.push({ crop: { originX, originY, width: cropW, height: cropH } });
-        if (cropW > 1600) actions.push({ resize: { width: 1600 } });
-      } else if (shot.width > 1600) {
-        actions.push({ resize: { width: 1600 } });
-      }
-      const compressed = await ImageManipulator.manipulateAsync(shot.uri, actions, {
-        compress: 0.7,
-        format: ImageManipulator.SaveFormat.JPEG,
-        base64: true,
-      });
+      // Send the full frame (just downscaled) — no cropping. The on-screen box
+      // is a framing guide only; cropping to it risked clipping the receipt on
+      // some devices. Resize the longer edge down for upload size.
+      const longest = Math.max(shot.width, shot.height);
+      const compressed = await ImageManipulator.manipulateAsync(
+        shot.uri,
+        longest > 1600 ? [{ resize: shot.width >= shot.height ? { width: 1600 } : { height: 1600 } }] : [],
+        {
+          compress: 0.7,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        }
+      );
       setCaptured({
         uri: compressed.uri,
         base64: compressed.base64 ?? "",
@@ -140,12 +123,12 @@ export default function ScanReceiptScreen() {
 
       // 4. No guessing: if the receipt couldn't be read reliably, do NOT save
       //    guessed values — prompt the user to retake or enter without a receipt.
-      // Only accept a clean, confident read. Anything blurry/low-confidence or
-      // missing the total is sent back for a retake rather than saved wrong.
+      // Reject only genuinely unreadable scans; let borderline reads through to
+      // the review screen, where the user confirms/edits before saving.
       const unreliable =
         !extracted ||
-        extracted.image_quality !== "ok" ||
-        (extracted.confidence ?? 0) < 0.8 ||
+        extracted.image_quality === "unreadable" ||
+        (extracted.confidence ?? 0) < 0.55 ||
         extracted.gross_amount == null;
       if (unreliable) {
         setNotReadable(true);
