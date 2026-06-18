@@ -32,6 +32,27 @@ import { formatGBP, formatUKDateInput, isoToUK, ukToISO } from "@/src/utils/form
 
 const VAT_VARIANT = { UK20: "uk20", UK0: "uk0", UNREC: "unrec", REVIEW: "review" } as const;
 
+type VatCodeKey = keyof typeof VAT_VARIANT;
+
+/**
+ * Live preview of the VAT code the backend will assign, mirroring
+ * services/vat_service.compute_vat_code so the on-screen badge updates as the
+ * user edits the VAT amount. The backend remains authoritative on save.
+ */
+function previewVatCode(args: {
+  receiptStatus: string;
+  category: string | null;
+  vatNum: number;
+  supplierVatNumber: string | null | undefined;
+}): VatCodeKey {
+  if (args.receiptStatus === "no_receipt") return "UK0";
+  if (args.category === "Client Entertaining") return "UNREC";
+  const v = isNaN(args.vatNum) ? 0 : args.vatNum;
+  if (v > 0 && !args.supplierVatNumber) return "REVIEW";
+  if (v > 0) return "UK20";
+  return "UK0";
+}
+
 export default function EditLineScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -114,6 +135,15 @@ export default function EditLineScreen() {
     ? grossNum - (isNaN(vatNum) ? 0 : vatNum)
     : null;
 
+  // Live VAT-code preview — updates as the user edits the VAT amount.
+  const liveVatCode = previewVatCode({
+    receiptStatus: line.receipt_status,
+    category,
+    vatNum,
+    supplierVatNumber: line.supplier_vat_number,
+  });
+  const shownVatCode = readOnly ? line.vat_code : liveVatCode;
+
   // Required fields — mirror the app's own completeness check (LineCard /
   // claim builder incompleteCount): date, gross > 0, category, narrative.
   // Mark these in red while incomplete so the user knows what still needs
@@ -164,7 +194,7 @@ export default function EditLineScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.metaRow}>
-          <StatusPill variant={VAT_VARIANT[line.vat_code]} />
+          <StatusPill variant={VAT_VARIANT[shownVatCode]} />
           <Text style={styles.metaText}>
             {line.receipt_status === "no_receipt" ? "No receipt" : "Receipt"} · VAT code set automatically
           </Text>
@@ -279,6 +309,10 @@ export default function EditLineScreen() {
               <Text style={styles.netValue} testID="edit-line-net">
                 {formatGBP(netComputed)}
               </Text>
+            </View>
+            <View style={styles.netRow}>
+              <Text style={styles.netLabel}>VAT code</Text>
+              <StatusPill testID="edit-line-vatcode" variant={VAT_VARIANT[liveVatCode]} />
             </View>
           </>
         ) : null}

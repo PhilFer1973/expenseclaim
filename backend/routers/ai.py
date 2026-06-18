@@ -126,30 +126,13 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
     if vat is None:
         vat = 0.0
 
-    # Reconciliation guard — the invariant is gross = net + vat, and gross is
-    # the largest of the three. Vision occasionally mislabels the VAT-summary
-    # net as the gross (or under-reads the net). Trust the clearly-labelled VAT
-    # and repair whichever figure is inconsistent, so a mislabel never persists.
-    TOL = 0.02
-    if gross is not None and net is not None:
-        if abs(gross - (net + vat)) > TOL:
-            if gross < net + vat:
-                # gross under-read (e.g. a subtotal) → real gross = net + vat
-                logger.warning(
-                    "Reconcile line %s: gross %.2f < net+vat %.2f; correcting gross",
-                    req.line_id, gross, net + vat,
-                )
-                gross = round(net + vat, 2)
-            else:
-                # net under-read → derive from the reliable gross & vat
-                logger.warning(
-                    "Reconcile line %s: gross %.2f != net+vat %.2f; correcting net",
-                    req.line_id, gross, net + vat,
-                )
-                net = round(gross - vat, 2)
-    elif gross is not None and net is None:
-        net = round(gross - vat, 2)
-    elif net is not None and gross is None:
+    # Anchor on the GROSS — it's the total paid, the most prominent figure on
+    # the receipt, and the value the prompt is tuned to read correctly. Net is
+    # always derived as gross - vat (done below, after the VAT code is final).
+    # Only synthesise the gross from net + vat when no gross could be read at
+    # all. We deliberately do NOT overwrite a read gross from net+vat: a single
+    # misread VAT would otherwise corrupt an otherwise-correct total.
+    if gross is None and net is not None:
         gross = round(net + vat, 2)
 
     payload: dict = {

@@ -45,6 +45,7 @@ Rules:
 - All amounts are positive decimal numbers in major currency units (e.g. 12.34).
 - If VAT is not printed but a UK VAT number is visible AND gross is known, set vat_amount to round(gross/6, 2) (standard 20% inclusive) ONLY IF you are confident the receipt is VAT-inclusive; otherwise leave null.
 - receipt_date must be in ISO-8601 (YYYY-MM-DD). Read dates carefully:
+  * The purchase date is usually labelled "Date:" (often near the top). Use that labelled date. NEVER use the transaction/receipt number, till number, card number, or the printed time as the date.
   * UK receipts and rail tickets usually print the day FIRST (DD MMM YY, DD-MM-YY or DD/MM/YYYY).
   * Map 3-letter month abbreviations exactly: JAN=01, FEB=02, MAR=03, APR=04, MAY=05, JUN=06, JUL=07, AUG=08, SEP=09, OCT=10, NOV=11, DEC=12.
   * If the month letters are smudged or partly unreadable from OCR, choose the month whose standard abbreviation best matches the visible letters and any surrounding context; do NOT default to an earlier month such as March.
