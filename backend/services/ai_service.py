@@ -38,6 +38,8 @@ Return ONLY a JSON object with this exact shape (no prose, no markdown fences):
 }
 
 Rules:
+- Read every value EXACTLY as printed on the receipt. Never estimate, round, infer, or invent a date or amount. If a specific field is not clearly legible, return null for that field rather than guessing.
+- Prefer the explicitly printed totals: use the printed "Total" for gross_amount, the printed VAT line for vat_amount, and the printed net/subtotal for net_amount. Do not recalculate them unless a value is missing.
 - All amounts are positive decimal numbers in major currency units (e.g. 12.34).
 - If VAT is not printed but a UK VAT number is visible AND gross is known, set vat_amount to round(gross/6, 2) (standard 20% inclusive) ONLY IF you are confident the receipt is VAT-inclusive; otherwise leave null.
 - receipt_date must be in ISO-8601 (YYYY-MM-DD). Read dates carefully:
@@ -111,6 +113,7 @@ async def extract_receipt(image_base64: str) -> dict:
         response = client.messages.create(
             model=MODEL_NAME,
             max_tokens=1024,
+            temperature=0,  # deterministic — same receipt must extract the same values
             system=EXTRACT_SYSTEM_PROMPT,
             messages=[
                 {
@@ -235,6 +238,7 @@ async def suggest_categories(
         response = client.messages.create(
             model=MODEL_NAME,
             max_tokens=1024,
+            temperature=0,  # deterministic category ranking
             system=SUGGEST_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": json.dumps(payload)}],
         )
