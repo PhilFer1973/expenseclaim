@@ -346,6 +346,14 @@ export default function EditLineScreen() {
           </View>
         ) : null}
 
+        {/* Zero-VAT submitted lines have no breakdown card; still show the code. */}
+        {readOnly && !(line.vat_amount != null && Number(line.vat_amount) > 0) ? (
+          <View style={styles.netRow}>
+            <Text style={styles.netLabel}>VAT code</Text>
+            <StatusPill testID="edit-line-vatcode-ro" variant={VAT_VARIANT[line.vat_code]} />
+          </View>
+        ) : null}
+
         <Field label="Category" required={!readOnly} incomplete={categoryIncomplete}>
           {aiSuggestions.length > 0 && !readOnly ? (
             <View style={styles.aiBlock}>
