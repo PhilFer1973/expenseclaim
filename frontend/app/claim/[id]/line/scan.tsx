@@ -119,10 +119,12 @@ export default function ScanReceiptScreen() {
 
       // 4. No guessing: if the receipt couldn't be read reliably, do NOT save
       //    guessed values — prompt the user to retake or enter without a receipt.
+      // Only accept a clean, confident read. Anything blurry/low-confidence or
+      // missing the total is sent back for a retake rather than saved wrong.
       const unreliable =
         !extracted ||
-        extracted.image_quality === "unreadable" ||
-        (extracted.confidence ?? 0) < 0.55 ||
+        extracted.image_quality !== "ok" ||
+        (extracted.confidence ?? 0) < 0.8 ||
         extracted.gross_amount == null;
       if (unreliable) {
         setNotReadable(true);
@@ -288,7 +290,9 @@ export default function ScanReceiptScreen() {
           <View style={[styles.corner, styles.tr]} />
           <View style={[styles.corner, styles.bl]} />
           <View style={[styles.corner, styles.br]} />
-          <Text style={styles.hint}>Line up the receipt inside the frame</Text>
+          <Text style={styles.hint}>
+            Fill the frame with the receipt — flat, in focus, well lit. Get close so the text is large and sharp.
+          </Text>
         </View>
 
         {error ? <Text style={[styles.error, { color: "#fff" }]}>{error}</Text> : null}
@@ -361,11 +365,13 @@ const styles = StyleSheet.create({
   br: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   hint: {
     position: "absolute",
-    bottom: -28,
+    bottom: -52,
     alignSelf: "center",
+    width: "100%",
+    textAlign: "center",
     color: "#fff",
     fontSize: typography.caption,
-    opacity: 0.85,
+    opacity: 0.9,
   },
   shutterRow: {
     flexDirection: "row",

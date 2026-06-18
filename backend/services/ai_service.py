@@ -39,6 +39,7 @@ Return ONLY a JSON object with this exact shape (no prose, no markdown fences):
 
 Rules:
 - Read every value EXACTLY as printed on the receipt. Never estimate, round, infer, or invent a date or amount. If a specific field is not clearly legible, return null for that field rather than guessing.
+- supplier_name is the merchant/store name, usually at the very top of the receipt or in its logo. Read it character by character. If the name is in a stylised logo and you are not confident of the exact spelling, return null rather than guessing a plausible-looking but different name.
 - gross_amount is the TOTAL AMOUNT PAID — the figure on the main "Total" / "Balance Due" / "Amount Due" / "Paid" / "Card" line in the body of the receipt. It is the LARGEST money total and is what the customer was charged.
 - Many receipts print a VAT summary near the bottom (e.g. "VAT @ 20%", or a "Totals" line showing the VAT amount and the NET/ex-VAT amount). Use that section for vat_amount and net_amount. The NET figure in the VAT summary is NOT the gross — do NOT use it as gross_amount even if its line is labelled "Total" or "Totals".
 - Reconciliation: gross_amount must equal net_amount + vat_amount, and gross_amount must be the largest of the three. If your chosen values do not reconcile, you have mislabelled them — re-read the receipt and correct before answering.
