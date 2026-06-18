@@ -48,8 +48,7 @@ function previewVatCode(args: {
   if (args.receiptStatus === "no_receipt") return "UK0";
   if (args.category === "Client Entertaining") return "UNREC";
   const v = isNaN(args.vatNum) ? 0 : args.vatNum;
-  if (v > 0 && !args.supplierVatNumber) return "REVIEW";
-  if (v > 0) return "UK20";
+  if (v > 0) return "UK20"; // any positive UK VAT is standard-rated
   return "UK0";
 }
 

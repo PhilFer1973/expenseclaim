@@ -9,6 +9,7 @@ Routes:
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from typing import Any, Optional
 
@@ -102,6 +103,30 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
     except Exception as exc:  # noqa: BLE001
         logger.exception("Vision extraction failed")
         raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
+
+    # --- TEMPORARY DIAGNOSTIC: log the raw model output to diagnose misreads ---
+    try:
+        logger.info(
+            ">>> EXTRACT line=%s fields=%s",
+            req.line_id,
+            json.dumps({
+                k: extracted.get(k)
+                for k in (
+                    "supplier_name", "supplier_vat_number", "receipt_date",
+                    "gross_amount", "vat_amount", "net_amount",
+                    "confidence", "image_quality",
+                )
+            }),
+        )
+        logger.info(
+            ">>> EXTRACT line=%s raw_model=%s",
+            req.line_id,
+            (extracted.get("raw_model_response") or "")[:1500],
+        )
+        logger.info(">>> EXTRACT line=%s image_b64_len=%s", req.line_id, len(image_b64))
+    except Exception:  # noqa: BLE001
+        pass
+    # --- END TEMPORARY DIAGNOSTIC ---
 
     quality = extracted.get("image_quality") or "ok"
     # Preserve the true quality signal — "unreadable" must NOT be silently
