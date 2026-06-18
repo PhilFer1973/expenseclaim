@@ -104,11 +104,11 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
         raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
 
     quality = extracted.get("image_quality") or "ok"
-    image_quality_status = {
-        "ok": "ok",
-        "blurry": "blurry",
-        "unreadable": "blurry",
-    }.get(quality, "ok")
+    # Preserve the true quality signal — "unreadable" must NOT be silently
+    # downgraded to "blurry". The client uses it to prompt a retake / switch
+    # to no-receipt instead of saving guessed values, and validate_line_for_submit
+    # blocks submitting an unreadable receipt line.
+    image_quality_status = quality if quality in {"ok", "blurry", "unreadable"} else "ok"
 
     # Build update payload — keep existing values when the model returned null.
     gross = extracted.get("gross_amount") or line.get("gross_amount")
