@@ -66,6 +66,36 @@ def _get_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
+def _enhance_for_ocr(image_b64: str) -> str:
+    """Best-effort image clean-up before OCR: fix orientation, grayscale,
+    normalise contrast (helps faint thermal ink) and sharpen slightly. Falls
+    back to the original on any error. Helps degraded/low-contrast receipts.
+    """
+    try:
+        import base64 as _b64
+        import io as _io
+
+        from PIL import Image, ImageEnhance, ImageOps
+
+        raw = _b64.b64decode(image_b64)
+        img = Image.open(_io.BytesIO(raw))
+        img = ImageOps.exif_transpose(img)  # honour camera orientation
+        gray = ImageOps.grayscale(img)
+        gray = ImageOps.autocontrast(gray, cutoff=1)  # stretch faint ink
+        gray = ImageEnhance.Sharpness(gray).enhance(1.8)
+        # Cap the long edge so the upload stays reasonable (Vision downsamples anyway).
+        max_edge = 2200
+        if max(gray.size) > max_edge:
+            scale = max_edge / max(gray.size)
+            gray = gray.resize((int(gray.width * scale), int(gray.height * scale)))
+        out = _io.BytesIO()
+        gray.convert("RGB").save(out, format="JPEG", quality=90)
+        return _b64.b64encode(out.getvalue()).decode("ascii")
+    except Exception:  # noqa: BLE001
+        logger.warning("Image enhancement failed; using original image", exc_info=True)
+        return image_b64
+
+
 def _strip_data_url(image_b64: str) -> str:
     """Strip a data:image/...;base64, prefix if present."""
     if image_b64.startswith("data:"):
@@ -112,6 +142,7 @@ async def extract_receipt(image_base64: str) -> dict:
     """Run Claude Vision on a receipt image. Returns structured fields."""
     client = _get_client()
     image_b64 = _strip_data_url(image_base64)
+    image_b64 = _enhance_for_ocr(image_b64)
 
     try:
         response = client.messages.create(

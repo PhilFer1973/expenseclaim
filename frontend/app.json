@@ -59,7 +59,13 @@
           "speechRecognitionPermission": "Transcribe your dictated notes"
         }
       ],
-      "react-native-document-scanner-plugin"
+      "react-native-document-scanner-plugin",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Upload a saved receipt photo to your expense claim"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

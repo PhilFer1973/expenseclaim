@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -28,8 +29,14 @@ type Captured = { uri: string; base64: string; width: number; height: number };
 export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  // `lineId` is present when retaking the photo for an existing line.
-  const { id, lineId: existingLineId } = useLocalSearchParams<{ id: string; lineId?: string }>();
+  // `lineId` is present when retaking for an existing line; `source=upload`
+  // picks an image from the library instead of opening the camera scanner.
+  const { id, lineId: existingLineId, source } = useLocalSearchParams<{
+    id: string;
+    lineId?: string;
+    source?: string;
+  }>();
+  const isUpload = source === "upload";
 
   const [captured, setCaptured] = useState<Captured | null>(null);
   const [working, setWorking] = useState(false);
@@ -44,27 +51,10 @@ export default function ScanReceiptScreen() {
   const extract = useExtractReceipt(id);
   const deleteLine = useDeleteLine(id);
 
-  // Open the native document scanner: it detects the receipt edges, lets the
-  // user adjust corners, corrects perspective and returns a clean cropped
-  // image. That cleaned image is what we send to the Claude Vision API.
-  const launchScanner = useCallback(async () => {
-    setError(null);
-    setNotReadable(false);
+  // Downscale + JPEG-encode an image URI to base64 for upload.
+  const processImageUri = useCallback(async (uri: string) => {
+    setWorking(true);
     try {
-      const { scannedImages } = await DocumentScanner.scanDocument({
-        maxNumDocuments: 1,
-        croppedImageQuality: 100,
-      });
-      if (!scannedImages || scannedImages.length === 0) {
-        // User cancelled the scanner. Leave the screen if nothing captured yet.
-        setCaptured((prev) => {
-          if (!prev) router.back();
-          return prev;
-        });
-        return;
-      }
-      setWorking(true);
-      const uri = scannedImages[0];
       const info = await ImageManipulator.manipulateAsync(uri, [], {});
       const longest = Math.max(info.width, info.height);
       const ops =
@@ -82,19 +72,73 @@ export default function ScanReceiptScreen() {
         width: processed.width,
         height: processed.height,
       });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Scan failed");
     } finally {
       setWorking(false);
     }
-  }, [router]);
+  }, []);
 
-  // Auto-open the scanner once when the screen mounts.
+  // Native document scanner: detects edges, lets the user adjust corners,
+  // corrects perspective and returns a clean cropped image for Claude Vision.
+  const launchScanner = useCallback(async () => {
+    setError(null);
+    setNotReadable(false);
+    try {
+      const { scannedImages } = await DocumentScanner.scanDocument({
+        maxNumDocuments: 1,
+        croppedImageQuality: 100,
+      });
+      if (!scannedImages || scannedImages.length === 0) {
+        setCaptured((prev) => {
+          if (!prev) router.back();
+          return prev;
+        });
+        return;
+      }
+      await processImageUri(scannedImages[0]);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Scan failed");
+    }
+  }, [router, processImageUri]);
+
+  // Pick an existing image from the photo library (best for digital receipts).
+  const pickFromLibrary = useCallback(async () => {
+    setError(null);
+    setNotReadable(false);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setError("Photo library access is needed to upload a receipt.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+        allowsEditing: false,
+      });
+      if (result.canceled || !result.assets?.length) {
+        setCaptured((prev) => {
+          if (!prev) router.back();
+          return prev;
+        });
+        return;
+      }
+      await processImageUri(result.assets[0].uri);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    }
+  }, [router, processImageUri]);
+
+  const startCapture = useCallback(() => {
+    if (isUpload) pickFromLibrary();
+    else launchScanner();
+  }, [isUpload, pickFromLibrary, launchScanner]);
+
+  // Auto-open the scanner / picker once when the screen mounts.
   useEffect(() => {
     if (launchedRef.current) return;
     launchedRef.current = true;
-    launchScanner();
-  }, [launchScanner]);
+    startCapture();
+  }, [startCapture]);
 
   const onSave = async () => {
     if (!captured?.base64) return;
@@ -125,12 +169,12 @@ export default function ScanReceiptScreen() {
         setScanning(false);
       }
 
-      // 4. No guessing: only accept a sharp, confident read. A "blurry" image
-      //    makes the model confabulate amounts, so bounce it for a rescan.
+      // 4. Only bounce a scan when the model truly couldn't read it (no total,
+      //    or it flagged the image unreadable). Otherwise proceed to the review
+      //    screen so the user can confirm/correct — we don't block on "blurry".
       const unreliable =
         !extracted ||
-        extracted.image_quality !== "ok" ||
-        (extracted.confidence ?? 0) < 0.7 ||
+        extracted.image_quality === "unreadable" ||
         extracted.gross_amount == null;
       if (unreliable) {
         setNotReadable(true);
@@ -180,17 +224,18 @@ export default function ScanReceiptScreen() {
         <View style={styles.notReadableBanner}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
           <Text style={styles.warnText}>
-            This photo was too blurry to read accurately, so nothing has been
-            filled in. For a sharp scan: lay the receipt flat on a surface, keep
-            your fingers off the text, use good light, and hold the phone steady
-            and parallel until it focuses. Then rescan — or enter without a receipt.
+            We couldn&apos;t read this receipt clearly, so nothing has been filled
+            in. {isUpload
+              ? "Try a clearer image, "
+              : "For a sharp scan lay the receipt flat, fingers off the text, in good light, "}
+            or enter the details without a receipt.
           </Text>
         </View>
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="scan-notreadable-retake"
-            label="Rescan"
-            onPress={launchScanner}
+            label={isUpload ? "Choose another" : "Rescan"}
+            onPress={startCapture}
             disabled={working}
           />
           <Button
@@ -226,9 +271,9 @@ export default function ScanReceiptScreen() {
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="scan-retake"
-            label="Rescan"
+            label={isUpload ? "Choose another" : "Rescan"}
             variant="secondary"
-            onPress={launchScanner}
+            onPress={startCapture}
             disabled={working}
           />
           <Button testID="scan-save" label="Use this receipt" onPress={onSave} loading={working} />
@@ -243,13 +288,13 @@ export default function ScanReceiptScreen() {
     <View style={[styles.root, styles.center]}>
       <ActivityIndicator color={colors.accent} />
       <Text style={styles.loadingText}>
-        {working ? "Preparing image…" : "Opening scanner…"}
+        {working ? "Preparing image…" : isUpload ? "Opening photos…" : "Opening scanner…"}
       </Text>
       {error ? (
         <>
           <Text style={[styles.error, { marginTop: spacing.lg }]}>{error}</Text>
           <View style={{ width: "70%", gap: spacing.sm, marginTop: spacing.lg }}>
-            <Button testID="scan-retry" label="Try again" onPress={launchScanner} />
+            <Button testID="scan-retry" label="Try again" onPress={startCapture} />
             <Button testID="scan-cancel" label="Go back" variant="ghost" onPress={() => router.back()} />
           </View>
         </>

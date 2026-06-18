@@ -40,6 +40,23 @@ export default function NewLineChooserScreen() {
         </Pressable>
 
         <Pressable
+          testID="new-line-upload"
+          onPress={() => router.push(`/claim/${id}/line/scan?source=upload`)}
+          style={({ pressed }) => [styles.option, pressed && { opacity: 0.85 }]}
+        >
+          <View style={[styles.iconBubble, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name="image-outline" size={26} color={colors.accentInk} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.optionTitle}>Upload receipt</Text>
+            <Text style={styles.optionSubtitle}>
+              Pick a saved photo or PDF receipt. Best for emailed or digital receipts.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
           testID="new-line-no-receipt"
           onPress={() => router.replace(`/claim/${id}/line/no-receipt`)}
           style={({ pressed }) => [styles.option, pressed && { opacity: 0.85 }]}
