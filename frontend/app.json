@@ -58,7 +58,8 @@
           "microphonePermission": "Dictate notes for your expense claim",
           "speechRecognitionPermission": "Transcribe your dictated notes"
         }
-      ]
+      ],
+      "react-native-document-scanner-plugin"
     ],
     "experiments": {
       "typedRoutes": true

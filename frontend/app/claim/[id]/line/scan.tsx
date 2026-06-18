@@ -1,12 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-  CameraView,
-  useCameraPermissions,
-  type CameraCapturedPicture,
-} from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -16,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DocumentScanner from "react-native-document-scanner-plugin";
 
 import {
   useAddLine,
@@ -29,68 +25,76 @@ import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 
 type Captured = { uri: string; base64: string; width: number; height: number };
 
-// On-screen framing-guide geometry (visual aid only).
-const GUIDE_W_FRAC = 0.86; // guide width as a fraction of screen width
-const GUIDE_ASPECT = 0.66; // guide width / height (portrait receipt shape)
-
 export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // `lineId` is present when retaking the photo for an existing line.
   const { id, lineId: existingLineId } = useLocalSearchParams<{ id: string; lineId?: string }>();
-  const [permission, requestPermission] = useCameraPermissions();
-  const cameraRef = useRef<CameraView | null>(null);
+
   const [captured, setCaptured] = useState<Captured | null>(null);
   const [working, setWorking] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notReadable, setNotReadable] = useState(false);
+  const [workLineId, setWorkLineId] = useState<string | null>(existingLineId ?? null);
+  const launchedRef = useRef(false);
 
   const addLine = useAddLine(id);
   const uploadReceipt = useUploadReceipt(id);
   const extract = useExtractReceipt(id);
   const deleteLine = useDeleteLine(id);
-  const [scanning, setScanning] = useState(false);
-  // The line we've been working with this session (so retakes reuse it
-  // instead of spawning orphan lines). Null until first save.
-  const [workLineId, setWorkLineId] = useState<string | null>(existingLineId ?? null);
-  // Set when extraction couldn't read the receipt reliably — we show a
-  // "not readable" prompt instead of saving guessed values.
-  const [notReadable, setNotReadable] = useState(false);
 
-  const onCapture = async () => {
+  // Open the native document scanner: it detects the receipt edges, lets the
+  // user adjust corners, corrects perspective and returns a clean cropped
+  // image. That cleaned image is what we send to the Claude Vision API.
+  const launchScanner = useCallback(async () => {
+    setError(null);
+    setNotReadable(false);
     try {
-      setError(null);
-      setWorking(true);
-      const shot: CameraCapturedPicture | undefined = await cameraRef.current?.takePictureAsync({
-        quality: 0.9,
-        skipProcessing: false,
+      const { scannedImages } = await DocumentScanner.scanDocument({
+        maxNumDocuments: 1,
+        croppedImageQuality: 100,
       });
-      if (!shot) return;
-
-      // Send the full frame (just downscaled) — no cropping. The on-screen box
-      // is a framing guide only; cropping to it risked clipping the receipt on
-      // some devices. Resize the longer edge down for upload size.
-      const longest = Math.max(shot.width, shot.height);
-      const compressed = await ImageManipulator.manipulateAsync(
-        shot.uri,
-        longest > 1600 ? [{ resize: shot.width >= shot.height ? { width: 1600 } : { height: 1600 } }] : [],
-        {
-          compress: 0.7,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        }
-      );
+      if (!scannedImages || scannedImages.length === 0) {
+        // User cancelled the scanner. Leave the screen if nothing captured yet.
+        setCaptured((prev) => {
+          if (!prev) router.back();
+          return prev;
+        });
+        return;
+      }
+      setWorking(true);
+      const uri = scannedImages[0];
+      const info = await ImageManipulator.manipulateAsync(uri, [], {});
+      const longest = Math.max(info.width, info.height);
+      const ops =
+        longest > 2000
+          ? [{ resize: info.width >= info.height ? { width: 2000 } : { height: 2000 } }]
+          : [];
+      const processed = await ImageManipulator.manipulateAsync(uri, ops, {
+        compress: 0.8,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      });
       setCaptured({
-        uri: compressed.uri,
-        base64: compressed.base64 ?? "",
-        width: compressed.width,
-        height: compressed.height,
+        uri: processed.uri,
+        base64: processed.base64 ?? "",
+        width: processed.width,
+        height: processed.height,
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Capture failed");
+      setError(e instanceof Error ? e.message : "Scan failed");
     } finally {
       setWorking(false);
     }
-  };
+  }, [router]);
+
+  // Auto-open the scanner once when the screen mounts.
+  useEffect(() => {
+    if (launchedRef.current) return;
+    launchedRef.current = true;
+    launchScanner();
+  }, [launchScanner]);
 
   const onSave = async () => {
     if (!captured?.base64) return;
@@ -101,14 +105,14 @@ export default function ScanReceiptScreen() {
       const targetLineId =
         workLineId ?? (await addLine.mutateAsync({ receipt_status: "receipt" })).claim_line_id;
       setWorkLineId(targetLineId);
-      // 2. Upload the image to that line (replaces any current image).
+      // 2. Upload the cleaned image to that line (replaces any current image).
       await uploadReceipt.mutateAsync({
         lineId: targetLineId,
         image_base64: captured.base64,
         width: captured.width,
         height: captured.height,
       });
-      // 3. Run Claude Vision extraction. Show the scanning overlay while it works.
+      // 3. Claude Vision extraction — the star of the show. Overlay while it works.
       setScanning(true);
       let extracted: Awaited<ReturnType<typeof extract.mutateAsync>>["extracted"] | null = null;
       try {
@@ -121,10 +125,7 @@ export default function ScanReceiptScreen() {
         setScanning(false);
       }
 
-      // 4. No guessing: if the receipt couldn't be read reliably, do NOT save
-      //    guessed values — prompt the user to retake or enter without a receipt.
-      // Reject only genuinely unreadable scans; let borderline reads through to
-      // the review screen, where the user confirms/edits before saving.
+      // 4. No guessing: bounce genuinely unreadable scans back for a retake.
       const unreliable =
         !extracted ||
         extracted.image_quality === "unreadable" ||
@@ -145,15 +146,9 @@ export default function ScanReceiptScreen() {
     }
   };
 
-  const onRetakeFromFailure = () => {
-    setNotReadable(false);
-    setCaptured(null); // back to camera; workLineId is reused on next capture
-  };
-
   const onEnterWithoutReceipt = async () => {
     setWorking(true);
     try {
-      // Discard the unreadable scanned line, then go to manual no-receipt entry.
       if (workLineId) {
         try {
           await deleteLine.mutateAsync(workLineId);
@@ -167,45 +162,12 @@ export default function ScanReceiptScreen() {
     }
   };
 
-  if (!permission) {
-    return (
-      <View style={[styles.root, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={[styles.root, styles.center, { padding: spacing.xl, paddingTop: insets.top + 80 }]}>
-        <Ionicons name="camera-outline" size={48} color={colors.accent} />
-        <Text style={styles.permissionTitle}>Camera access needed</Text>
-        <Text style={styles.permissionBody}>
-          We use the camera to capture receipts so AI can extract the details.
-        </Text>
-        <View style={{ width: "100%", gap: spacing.sm, marginTop: spacing.xl }}>
-          <Button
-            testID="scan-grant-camera"
-            label="Allow camera"
-            onPress={() => requestPermission()}
-          />
-          <Button
-            testID="scan-cancel-perm"
-            label="Not now"
-            variant="ghost"
-            onPress={() => router.back()}
-          />
-        </View>
-      </View>
-    );
-  }
-
   // Not-readable state — extraction failed; never show guessed values.
   if (notReadable && captured) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable testID="scan-notreadable-back" onPress={onRetakeFromFailure} hitSlop={12}>
+          <Pressable testID="scan-notreadable-back" onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
           </Pressable>
           <Text style={styles.title}>Couldn&apos;t read receipt</Text>
@@ -218,14 +180,14 @@ export default function ScanReceiptScreen() {
           <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
           <Text style={styles.warnText}>
             We couldn&apos;t read this receipt clearly, so nothing has been filled in.
-            Retake the photo for a clearer scan, or enter the details without a receipt.
+            Rescan for a clearer image, or enter the details without a receipt.
           </Text>
         </View>
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="scan-notreadable-retake"
-            label="Retake photo"
-            onPress={onRetakeFromFailure}
+            label="Rescan"
+            onPress={launchScanner}
             disabled={working}
           />
           <Button
@@ -240,12 +202,12 @@ export default function ScanReceiptScreen() {
     );
   }
 
-  // Preview state
+  // Preview state — the cleaned scan, ready to send to Vision.
   if (captured) {
     return (
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable testID="scan-discard" onPress={() => setCaptured(null)} hitSlop={12}>
+          <Pressable testID="scan-discard" onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
           </Pressable>
           <Text style={styles.title}>Preview</Text>
@@ -254,73 +216,49 @@ export default function ScanReceiptScreen() {
         <View style={styles.previewWrap}>
           <Image source={{ uri: captured.uri }} style={styles.preview} resizeMode="contain" />
         </View>
+        <Text style={styles.previewHint}>
+          Make sure the supplier, date and totals are sharp and fully visible.
+        </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
           <Button
             testID="scan-retake"
-            label="Retake"
+            label="Rescan"
             variant="secondary"
-            onPress={() => setCaptured(null)}
+            onPress={launchScanner}
             disabled={working}
           />
-          <Button
-            testID="scan-save"
-            label="Use this receipt"
-            onPress={onSave}
-            loading={working}
-          />
+          <Button testID="scan-save" label="Use this receipt" onPress={onSave} loading={working} />
         </View>
         <ScanningOverlay visible={scanning} />
       </View>
     );
   }
 
-  // Camera state
+  // Launching / processing the scanner.
   return (
-    <View style={styles.cameraRoot}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
-
-      {/* Screen-centred capture guide — the photo is cropped to this box. */}
-      <View style={styles.guideLayer} pointerEvents="none">
-        <View style={styles.frameWrap}>
-          <View style={[styles.corner, styles.tl]} />
-          <View style={[styles.corner, styles.tr]} />
-          <View style={[styles.corner, styles.bl]} />
-          <View style={[styles.corner, styles.br]} />
-        </View>
-        <Text style={styles.hint}>
-          Fill the box with the receipt — flat, in focus, well lit. Get close so the text is large and sharp.
-        </Text>
-      </View>
-
-      <View style={[styles.cameraHeader, { top: insets.top + 12 }]}>
-        <Pressable testID="scan-back" onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="close" size={28} color="#fff" />
-        </Pressable>
-        <Text style={styles.cameraTitle}>Capture receipt</Text>
-        <View style={{ width: 28 }} />
-      </View>
-
-      {error ? <Text style={[styles.error, styles.errorOnCam]}>{error}</Text> : null}
-
-      <View style={[styles.shutterRow, { bottom: insets.bottom + spacing.xl }]}>
-        <Pressable
-          testID="scan-shutter"
-          onPress={onCapture}
-          disabled={working}
-          style={styles.shutter}
-        >
-          <View style={styles.shutterInner} />
-        </Pressable>
-      </View>
+    <View style={[styles.root, styles.center]}>
+      <ActivityIndicator color={colors.accent} />
+      <Text style={styles.loadingText}>
+        {working ? "Preparing image…" : "Opening scanner…"}
+      </Text>
+      {error ? (
+        <>
+          <Text style={[styles.error, { marginTop: spacing.lg }]}>{error}</Text>
+          <View style={{ width: "70%", gap: spacing.sm, marginTop: spacing.lg }}>
+            <Button testID="scan-retry" label="Try again" onPress={launchScanner} />
+            <Button testID="scan-cancel" label="Go back" variant="ghost" onPress={() => router.back()} />
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.pageBg },
-  cameraRoot: { flex: 1, backgroundColor: "#000" },
-  center: { alignItems: "center", justifyContent: "center" },
+  center: { alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  loadingText: { marginTop: spacing.md, fontSize: typography.body, color: colors.textSecondary },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -329,85 +267,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   title: { fontSize: typography.h3, fontWeight: typography.semibold, color: colors.textPrimary },
-  permissionTitle: {
-    marginTop: spacing.lg,
-    fontSize: typography.h2,
-    fontWeight: typography.bold,
-    color: colors.textPrimary,
-    textAlign: "center",
-  },
-  permissionBody: {
-    marginTop: spacing.sm,
-    fontSize: typography.body,
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-  guideLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cameraHeader: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-  },
-  cameraTitle: { color: "#fff", fontSize: typography.body, fontWeight: typography.semibold },
-  errorOnCam: {
-    position: "absolute",
-    top: "50%",
-    left: 0,
-    right: 0,
-    color: "#fff",
-  },
-  frameWrap: {
-    width: `${GUIDE_W_FRAC * 100}%`,
-    aspectRatio: GUIDE_ASPECT,
-  },
-  corner: {
-    position: "absolute",
-    width: 32,
-    height: 32,
-    borderColor: "#fff",
-  },
-  tl: { top: 0, left: 0, borderTopWidth: 3, borderLeftWidth: 3 },
-  tr: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3 },
-  bl: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
-  br: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
-  hint: {
-    marginTop: spacing.lg,
-    width: "86%",
-    textAlign: "center",
-    color: "#fff",
-    fontSize: typography.caption,
-    opacity: 0.9,
-  },
-  shutterRow: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  shutter: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
-    borderColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  shutterInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "#fff",
-  },
   previewWrap: {
     flex: 1,
     margin: spacing.lg,
@@ -416,6 +275,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   preview: { width: "100%", height: "100%" },
+  previewHint: {
+    textAlign: "center",
+    paddingHorizontal: spacing.lg,
+    fontSize: typography.caption,
+    color: colors.textSecondary,
+  },
   error: {
     color: colors.danger,
     fontSize: typography.bodySm,
