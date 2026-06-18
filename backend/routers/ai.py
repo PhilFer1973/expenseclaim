@@ -104,6 +104,23 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
         logger.exception("Vision extraction failed")
         raise HTTPException(status_code=502, detail=f"Vision extraction failed: {exc}") from exc
 
+    # --- TEMPORARY DIAGNOSTIC ---
+    try:
+        logger.info(
+            ">>> EXTRACT line=%s fields=%s img_b64_len=%s",
+            req.line_id,
+            json.dumps({
+                k: extracted.get(k)
+                for k in ("supplier_name", "receipt_date", "gross_amount",
+                          "vat_amount", "net_amount", "confidence", "image_quality")
+            }),
+            len(image_b64),
+        )
+        logger.info(">>> EXTRACT line=%s notes=%s", req.line_id, (extracted.get("notes") or "")[:600])
+    except Exception:  # noqa: BLE001
+        pass
+    # --- END TEMPORARY DIAGNOSTIC ---
+
     quality = extracted.get("image_quality") or "ok"
     # Preserve the true quality signal — "unreadable" must NOT be silently
     # downgraded to "blurry". The client uses it to prompt a retake / switch
