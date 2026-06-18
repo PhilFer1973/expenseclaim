@@ -13,6 +13,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,8 +30,16 @@ import { colors, radii, spacing, typography } from "@/src/theme/tokens";
 
 type Captured = { uri: string; base64: string; width: number; height: number };
 
+// On-screen capture guide geometry. The captured photo is cropped to this
+// region (mapped through the camera's "cover" scaling) so the receipt fills
+// the analysed image regardless of how far away the phone is held.
+const GUIDE_W_FRAC = 0.86; // guide width as a fraction of screen width
+const GUIDE_ASPECT = 0.66; // guide width / height (portrait receipt shape)
+const CROP_MARGIN = 1.08; // capture slightly larger than the guide so it can't clip
+
 export default function ScanReceiptScreen() {
   const insets = useSafeAreaInsets();
+  const { width: winW, height: winH } = useWindowDimensions();
   const router = useRouter();
   // `lineId` is present when retaking the photo for an existing line.
   const { id, lineId: existingLineId } = useLocalSearchParams<{ id: string; lineId?: string }>();
@@ -62,19 +71,31 @@ export default function ScanReceiptScreen() {
       });
       if (!shot) return;
 
-      // IMPORTANT: do NOT crop the captured photo. The full frame must reach
-      // the Vision model — cropping to the screen aspect ratio cut the left/
-      // right edges off receipts (item names and prices), which wrecked
-      // extraction. Only downscale + compress for upload size.
-      const compressed = await ImageManipulator.manipulateAsync(
-        shot.uri,
-        shot.width > 1600 ? [{ resize: { width: 1600 } }] : [],
-        {
-          compress: 0.7,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        }
-      );
+      // Crop to the on-screen guide box so the receipt fills the analysed
+      // image. The camera preview fills the screen using "cover" scaling, so a
+      // photo pixel maps to `s` screen pixels; invert that to turn the centred
+      // guide rectangle (screen px) into a centred crop on the full photo.
+      const actions: ImageManipulator.Action[] = [];
+      const s = Math.max(winW / shot.width, winH / shot.height);
+      if (isFinite(s) && s > 0) {
+        const guideWscreen = GUIDE_W_FRAC * winW;
+        const guideHscreen = guideWscreen / GUIDE_ASPECT;
+        let cropW = Math.round((guideWscreen / s) * CROP_MARGIN);
+        let cropH = Math.round((guideHscreen / s) * CROP_MARGIN);
+        cropW = Math.min(cropW, shot.width);
+        cropH = Math.min(cropH, shot.height);
+        const originX = Math.round((shot.width - cropW) / 2);
+        const originY = Math.round((shot.height - cropH) / 2);
+        actions.push({ crop: { originX, originY, width: cropW, height: cropH } });
+        if (cropW > 1600) actions.push({ resize: { width: 1600 } });
+      } else if (shot.width > 1600) {
+        actions.push({ resize: { width: 1600 } });
+      }
+      const compressed = await ImageManipulator.manipulateAsync(shot.uri, actions, {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      });
       setCaptured({
         uri: compressed.uri,
         base64: compressed.base64 ?? "",
@@ -275,40 +296,39 @@ export default function ScanReceiptScreen() {
   return (
     <View style={styles.cameraRoot}>
       <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
-      <View style={[styles.cameraOverlay, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.cameraHeader}>
-          <Pressable testID="scan-back" onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </Pressable>
-          <Text style={styles.cameraTitle}>Capture receipt</Text>
-          <View style={{ width: 28 }} />
-        </View>
 
-        {/* Edge-detection style frame */}
+      {/* Screen-centred capture guide — the photo is cropped to this box. */}
+      <View style={styles.guideLayer} pointerEvents="none">
         <View style={styles.frameWrap}>
           <View style={[styles.corner, styles.tl]} />
           <View style={[styles.corner, styles.tr]} />
           <View style={[styles.corner, styles.bl]} />
           <View style={[styles.corner, styles.br]} />
-          <Text style={styles.hint}>
-            Fill the frame with the receipt — flat, in focus, well lit. Get close so the text is large and sharp.
-          </Text>
         </View>
+        <Text style={styles.hint}>
+          Fill the box with the receipt — flat, in focus, well lit. Get close so the text is large and sharp.
+        </Text>
+      </View>
 
-        {error ? <Text style={[styles.error, { color: "#fff" }]}>{error}</Text> : null}
+      <View style={[styles.cameraHeader, { top: insets.top + 12 }]}>
+        <Pressable testID="scan-back" onPress={() => router.back()} hitSlop={12}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </Pressable>
+        <Text style={styles.cameraTitle}>Capture receipt</Text>
+        <View style={{ width: 28 }} />
+      </View>
 
-        <View style={[styles.shutterRow, { paddingBottom: insets.bottom + spacing.xl }]}>
-          <View style={{ width: 56 }} />
-          <Pressable
-            testID="scan-shutter"
-            onPress={onCapture}
-            disabled={working}
-            style={styles.shutter}
-          >
-            <View style={styles.shutterInner} />
-          </Pressable>
-          <View style={{ width: 56 }} />
-        </View>
+      {error ? <Text style={[styles.error, styles.errorOnCam]}>{error}</Text> : null}
+
+      <View style={[styles.shutterRow, { bottom: insets.bottom + spacing.xl }]}>
+        <Pressable
+          testID="scan-shutter"
+          onPress={onCapture}
+          disabled={working}
+          style={styles.shutter}
+        >
+          <View style={styles.shutterInner} />
+        </Pressable>
       </View>
     </View>
   );
@@ -339,19 +359,31 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: "center",
   },
-  cameraOverlay: { flex: 1, justifyContent: "space-between" },
+  guideLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   cameraHeader: {
+    position: "absolute",
+    left: 0,
+    right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: spacing.lg,
   },
   cameraTitle: { color: "#fff", fontSize: typography.body, fontWeight: typography.semibold },
+  errorOnCam: {
+    position: "absolute",
+    top: "50%",
+    left: 0,
+    right: 0,
+    color: "#fff",
+  },
   frameWrap: {
-    alignSelf: "center",
-    width: "80%",
-    aspectRatio: 0.7,
-    justifyContent: "flex-end",
+    width: `${GUIDE_W_FRAC * 100}%`,
+    aspectRatio: GUIDE_ASPECT,
   },
   corner: {
     position: "absolute",
@@ -364,20 +396,19 @@ const styles = StyleSheet.create({
   bl: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   br: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   hint: {
-    position: "absolute",
-    bottom: -52,
-    alignSelf: "center",
-    width: "100%",
+    marginTop: spacing.lg,
+    width: "86%",
     textAlign: "center",
     color: "#fff",
     fontSize: typography.caption,
     opacity: 0.9,
   },
   shutterRow: {
-    flexDirection: "row",
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
     justifyContent: "center",
-    gap: spacing.xl,
   },
   shutter: {
     width: 76,
