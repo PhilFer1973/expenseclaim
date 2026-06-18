@@ -111,13 +111,46 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
     image_quality_status = quality if quality in {"ok", "blurry", "unreadable"} else "ok"
 
     # Build update payload — keep existing values when the model returned null.
-    gross = extracted.get("gross_amount") or line.get("gross_amount")
-    vat = extracted.get("vat_amount")
+    def _f(x: Any) -> float | None:
+        return float(x) if x is not None else None
+
+    gross = _f(extracted.get("gross_amount"))
+    if gross is None:
+        gross = _f(line.get("gross_amount"))
+    vat = _f(extracted.get("vat_amount"))
     if vat is None:
-        vat = line.get("vat_amount") or 0
-    net = extracted.get("net_amount")
-    if net is None and gross is not None:
-        net = round(float(gross) - float(vat or 0), 2)
+        vat = _f(line.get("vat_amount"))
+    net = _f(extracted.get("net_amount"))
+    if net is None:
+        net = _f(line.get("net_amount"))
+    if vat is None:
+        vat = 0.0
+
+    # Reconciliation guard — the invariant is gross = net + vat, and gross is
+    # the largest of the three. Vision occasionally mislabels the VAT-summary
+    # net as the gross (or under-reads the net). Trust the clearly-labelled VAT
+    # and repair whichever figure is inconsistent, so a mislabel never persists.
+    TOL = 0.02
+    if gross is not None and net is not None:
+        if abs(gross - (net + vat)) > TOL:
+            if gross < net + vat:
+                # gross under-read (e.g. a subtotal) → real gross = net + vat
+                logger.warning(
+                    "Reconcile line %s: gross %.2f < net+vat %.2f; correcting gross",
+                    req.line_id, gross, net + vat,
+                )
+                gross = round(net + vat, 2)
+            else:
+                # net under-read → derive from the reliable gross & vat
+                logger.warning(
+                    "Reconcile line %s: gross %.2f != net+vat %.2f; correcting net",
+                    req.line_id, gross, net + vat,
+                )
+                net = round(gross - vat, 2)
+    elif gross is not None and net is None:
+        net = round(gross - vat, 2)
+    elif net is not None and gross is None:
+        gross = round(net + vat, 2)
 
     payload: dict = {
         "supplier_name": extracted.get("supplier_name") or line.get("supplier_name"),
@@ -142,6 +175,11 @@ async def extract_receipt_endpoint(req: ExtractRequest) -> ExtractResponse:
     )
     payload["vat_code"] = decision.vat_code
     payload["vat_amount"] = float(decision.vat_amount)
+    # Keep net consistent with the final (possibly adjusted) VAT: net = gross - vat.
+    if payload.get("gross_amount") is not None:
+        payload["net_amount"] = round(
+            float(payload["gross_amount"]) - float(payload["vat_amount"]), 2
+        )
 
     # Old-receipt flag
     rd = merged.get("receipt_date")
