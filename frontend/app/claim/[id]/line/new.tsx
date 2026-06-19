@@ -24,7 +24,7 @@ export default function NewLineChooserScreen() {
       <View style={styles.content}>
         <Pressable
           testID="new-line-scan"
-          onPress={() => router.push(`/claim/${id}/line/scan`)}
+          onPress={() => router.replace(`/claim/${id}/line/scan`)}
           style={({ pressed }) => [styles.option, pressed && { opacity: 0.85 }]}
         >
           <View style={[styles.iconBubble, { backgroundColor: colors.accentSoft }]}>
@@ -41,7 +41,7 @@ export default function NewLineChooserScreen() {
 
         <Pressable
           testID="new-line-upload"
-          onPress={() => router.push(`/claim/${id}/line/scan?source=upload`)}
+          onPress={() => router.replace(`/claim/${id}/line/scan?source=upload`)}
           style={({ pressed }) => [styles.option, pressed && { opacity: 0.85 }]}
         >
           <View style={[styles.iconBubble, { backgroundColor: colors.accentSoft }]}>

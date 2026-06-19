@@ -45,6 +45,7 @@ export default function ScanReceiptScreen() {
   const [notReadable, setNotReadable] = useState(false);
   const [workLineId, setWorkLineId] = useState<string | null>(existingLineId ?? null);
   const launchedRef = useRef(false);
+  const submittingRef = useRef(false);
 
   const addLine = useAddLine(id);
   const uploadReceipt = useUploadReceipt(id);
@@ -142,6 +143,10 @@ export default function ScanReceiptScreen() {
 
   const onSave = async () => {
     if (!captured?.base64) return;
+    // Synchronous re-entry guard: a fast double-tap (or slow navigation) must
+    // not run this twice, or it creates a duplicate line.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     setWorking(true);
     try {
@@ -179,6 +184,7 @@ export default function ScanReceiptScreen() {
       if (unreliable) {
         setNotReadable(true);
         setWorking(false);
+        submittingRef.current = false; // allow rescan / no-receipt
         return;
       }
 
@@ -188,6 +194,7 @@ export default function ScanReceiptScreen() {
       setError(e instanceof Error ? e.message : "Upload failed");
       setScanning(false);
       setWorking(false);
+      submittingRef.current = false; // allow retry
     }
   };
 
